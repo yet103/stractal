@@ -5612,6 +5612,79 @@
     }
   }
 
+  // ===== Toolbar Group Toggle =====
+  const TB_GROUP_IDS = ['tg-view', 'tg-tools', 'tg-features', 'tg-file', 'tg-export', 'tg-delete', 'tg-undoredo', 'tg-align', 'tg-zoom', 'tg-misc'];
+  const TB_DEFAULTS = {
+    'tg-view': true,
+    'tg-tools': true,
+    'tg-features': false,
+    'tg-file': false,
+    'tg-export': false,
+    'tg-delete': true,
+    'tg-undoredo': true,
+    'tg-align': false,
+    'tg-zoom': true,
+    'tg-misc': false,
+  };
+
+  function loadToolbarGroupPrefs() {
+    try {
+      const saved = localStorage.getItem('stractal_toolbar_groups');
+      if (saved) return JSON.parse(saved);
+    } catch (e) { /* ignore */ }
+    return { ...TB_DEFAULTS };
+  }
+
+  function saveToolbarGroupPrefs(prefs) {
+    try {
+      localStorage.setItem('stractal_toolbar_groups', JSON.stringify(prefs));
+    } catch (e) { /* ignore */ }
+  }
+
+  function applyToolbarGroupPrefs(prefs) {
+    TB_GROUP_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (prefs[id]) {
+        el.classList.remove('tb-hidden');
+      } else {
+        el.classList.add('tb-hidden');
+      }
+    });
+    // Update menu checkmarks
+    document.querySelectorAll('.menu-toggle-tb').forEach(btn => {
+      const groupId = btn.getAttribute('data-tb-group');
+      // Store original label on first call
+      if (!btn.dataset.label) {
+        btn.dataset.label = btn.textContent.replace(/^✓\s*/, '').trim();
+      }
+      const label = btn.dataset.label;
+      if (prefs[groupId]) {
+        btn.textContent = '✓ ' + label;
+        btn.classList.remove('tb-off');
+      } else {
+        btn.textContent = '    ' + label;
+        btn.classList.add('tb-off');
+      }
+    });
+  }
+
+  function setupToolbarGroupToggle() {
+    const prefs = loadToolbarGroupPrefs();
+    applyToolbarGroupPrefs(prefs);
+
+    document.querySelectorAll('.menu-toggle-tb').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const groupId = btn.getAttribute('data-tb-group');
+        const prefs = loadToolbarGroupPrefs();
+        prefs[groupId] = !prefs[groupId];
+        saveToolbarGroupPrefs(prefs);
+        applyToolbarGroupPrefs(prefs);
+      });
+    });
+  }
+
   // ===== Init =====
   function init() {
     loadState();
@@ -5621,6 +5694,7 @@
     setupPlanTable();
     setupDashboard();
     setupMenuBar();
+    setupToolbarGroupToggle();
     resizeCanvas();
     renderPersonList();
     renderLayerList();

@@ -80,6 +80,17 @@
             <div class="menu-divider"></div>
             <button class="menu-action" id="menu-toggle-sidebar">📋 リソースパネル</button>
             <button class="menu-action" id="menu-toggle-property">🔧 プロパティパネル</button>
+            <div class="menu-divider"></div>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-view">✓ ビューモード</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-tools">✓ ツール</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-features">✓ 機能</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-file">✓ ファイル</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-export">✓ エクスポート</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-delete">✓ 削除</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-undoredo">✓ 元に戻す</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-align">✓ 整列</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-zoom">✓ ズーム</button>
+            <button class="menu-action menu-toggle-tb" data-tb-group="tg-misc">✓ その他</button>
           </div>
         </div>
         <div class="menu-item">
@@ -97,41 +108,41 @@
         </div>
       </div>
       <div id="toolbar">
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="tg-view">
           <button class="btn active" id="btn-square-view" title="スクエアビュー">□ スクエア</button>
           <button class="btn" id="btn-quarter-view" title="クォータービュー">◇ クォーター</button>
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="tg-tools">
           <button class="btn active" id="btn-tool-select" title="選択・移動">🖱 選択</button>
           <button class="btn" id="btn-tool-region" title="領域を描画">⬜ 領域</button>
           <button class="btn" id="btn-tool-connector" title="図形描画 (Shift)">✏️ 図形描画</button>
           <button class="btn" id="btn-tool-text" title="テキスト注釈">📝 注釈</button>
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="tg-features">
           <button class="btn" id="btn-bulk-create" title="一括作成">📋 一括作成</button>
           <button class="btn" id="btn-role-manage" title="役割管理">🏷 役割管理</button>
           <button class="btn" id="btn-plan-table" title="リソース計画テーブル">📊 計画表</button>
           <button class="btn" id="btn-dashboard" title="ダッシュボード">📈 ダッシュボード</button>
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="tg-file">
           <button class="btn" id="btn-save-file" title="ファイルに保存">💾 保存</button>
           <button class="btn" id="btn-load-file" title="ファイルから読込">📂 読込</button>
           <input type="file" id="file-import-input" accept=".json" style="display:none">
           <button class="btn" id="btn-import-csv" title="CSVインポート">📊 CSV</button>
           <input type="file" id="csv-import-input" accept=".csv,.tsv,.txt" style="display:none">
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="tg-export">
           <button class="btn" id="btn-export-png" title="PNG画像をエクスポート">📸 画像出力</button>
           <button class="btn" id="btn-print" title="印刷プレビュー">🖨 印刷</button>
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="tg-delete">
           <button class="btn btn-danger" id="btn-delete" title="選択中のリソースを削除">🗑 削除</button>
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="tg-undoredo">
           <button class="btn btn-icon" id="btn-undo" title="元に戻す (Ctrl+Z)">↩</button>
           <button class="btn btn-icon" id="btn-redo" title="やり直し (Ctrl+Y)">↪</button>
         </div>
-        <div class="toolbar-group toolbar-align">
+        <div class="toolbar-group toolbar-align" id="tg-align">
           <span class="toolbar-label">整列</span>
           <button class="btn btn-icon" id="btn-align-left" title="左揃え">⫷</button>
           <button class="btn btn-icon" id="btn-align-center-h" title="水平中央">⫿</button>
@@ -143,12 +154,12 @@
           <button class="btn btn-icon" id="btn-distribute-h" title="水平等間隔">⇔</button>
           <button class="btn btn-icon" id="btn-distribute-v" title="垂直等間隔">⇕</button>
         </div>
-        <div class="toolbar-group toolbar-zoom">
+        <div class="toolbar-group toolbar-zoom" id="tg-zoom">
           <span class="toolbar-label">🔍</span>
           <span id="zoom-label" class="zoom-label">100%</span>
           <button class="btn btn-icon" id="btn-zoom-reset" title="ズームリセット">⟲</button>
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="tg-misc">
           <button class="btn btn-icon" id="btn-dark-mode" title="ダークモード切替">🌙</button>
           <button class="btn btn-icon" id="btn-share-url" title="共有URLをコピー">🔗</button>
         </div>
@@ -210,12 +221,12 @@
             <div class="prop-label">役割ラベル</div>
             <div id="prop-roles-container"></div>
           </div>
-          <hr style="border:none;border-top:1px solid #ddd;margin:8px 0;">
+          <hr class="prop-separator">
           <div class="prop-group">
             <div class="prop-label">基本容量</div>
-            <div style="display:flex;gap:4px;align-items:center;">
-              <input type="number" class="prop-input" id="prop-capacity" value="1.0" min="0" step="0.1" style="width:70px;">
-              <select class="prop-input" id="prop-unit" style="width:80px;">
+            <div class="prop-inline-row">
+              <input type="number" class="prop-input prop-input-narrow" id="prop-capacity" value="1.0" min="0" step="0.1">
+              <select class="prop-input prop-input-unit" id="prop-unit">
                 <option value="人月">人月</option>
                 <option value="人日">人日</option>
                 <option value="人時">人時</option>
@@ -230,8 +241,8 @@
           <div class="prop-group">
             <div class="prop-label">リソース配分</div>
             <div id="prop-allocations-container"></div>
-            <button class="btn btn-sm" id="btn-add-allocation" style="margin-top:4px;font-size:11px;">＋配分先を追加</button>
-            <div id="prop-allocation-summary" style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #eee;padding-top:4px;"></div>
+            <button class="btn btn-sm" id="btn-add-allocation">＋配分先を追加</button>
+            <div id="prop-allocation-summary" class="allocation-summary"></div>
           </div>
         </div>
         <div id="item-props" style="display:none;">
@@ -253,12 +264,12 @@
             <div class="prop-label">色</div>
             <input type="color" class="prop-color-input" id="prop-item-color" value="#4a8acf">
           </div>
-          <hr style="border:none;border-top:1px solid #ddd;margin:8px 0;">
+          <hr class="prop-separator">
           <div class="prop-group">
             <div class="prop-label">基本容量</div>
-            <div style="display:flex;gap:4px;align-items:center;">
-              <input type="number" class="prop-input" id="prop-item-capacity" value="1" min="0" step="1" style="width:70px;">
-              <select class="prop-input" id="prop-item-unit" style="width:80px;">
+            <div class="prop-inline-row">
+              <input type="number" class="prop-input prop-input-narrow" id="prop-item-capacity" value="1" min="0" step="1">
+              <select class="prop-input prop-input-unit" id="prop-item-unit">
                 <option value="台">台</option>
                 <option value="ライセンス">ライセンス</option>
                 <option value="個">個</option>
@@ -273,8 +284,8 @@
           <div class="prop-group">
             <div class="prop-label">リソース配分</div>
             <div id="prop-item-allocations-container"></div>
-            <button class="btn btn-sm" id="btn-add-item-allocation" style="margin-top:4px;font-size:11px;">＋配分先を追加</button>
-            <div id="prop-item-allocation-summary" style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #eee;padding-top:4px;"></div>
+            <button class="btn btn-sm" id="btn-add-item-allocation">＋配分先を追加</button>
+            <div id="prop-item-allocation-summary" class="allocation-summary"></div>
           </div>
         </div>
         <div id="region-props" style="display:none;">
@@ -346,7 +357,7 @@
           </div>
         </div>
         <div id="layer-assign-props" style="display:none;">
-          <hr style="margin:8px 0;border-color:var(--border-color);">
+          <hr class="prop-separator">
           <div class="prop-group">
             <div class="prop-label">レイヤー</div>
             <select class="prop-input" id="prop-layer-assign"></select>
@@ -388,7 +399,7 @@
       <div class="modal-section">
         <h4 class="modal-subtitle">役割を追加</h4>
         <div class="modal-row">
-          <input type="text" id="role-add-name" class="prop-input" placeholder="役割名" style="flex:1;">
+          <input type="text" id="role-add-name" class="prop-input" placeholder="役割名" style="flex:1">
           <input type="color" id="role-add-color" class="role-add-color-input" value="#e06c75">
           <select id="role-add-icon" class="role-add-icon-select">
             <option value="">アイコン</option>
@@ -414,25 +425,25 @@
 
   <!-- Resource Plan Table Modal -->
   <div class="modal-overlay" id="plan-modal">
-    <div class="modal-panel" style="width:95%;max-width:1400px;max-height:90vh;overflow:auto;">
+    <div class="modal-panel modal-panel-wide">
       <h3 class="modal-title">📊 リソース計画テーブル</h3>
-      <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-        <label style="font-size:12px;">開始:
-          <input type="month" id="plan-start" style="font-size:12px;padding:3px;">
+      <div class="plan-settings">
+        <label class="plan-settings-label">開始:
+          <input type="month" id="plan-start" class="plan-settings-input">
         </label>
-        <label style="font-size:12px;">期間数:
-          <input type="number" id="plan-count" min="1" max="36" value="12" style="width:50px;font-size:12px;padding:3px;">
+        <label class="plan-settings-label">期間数:
+          <input type="number" id="plan-count" min="1" max="36" value="12" class="plan-settings-input plan-settings-input-sm">
         </label>
-        <label style="font-size:12px;">単位:
-          <select id="plan-unit" style="font-size:12px;padding:3px;">
+        <label class="plan-settings-label">単位:
+          <select id="plan-unit" class="plan-settings-input">
             <option value="month">月</option>
             <option value="quarter">四半期</option>
           </select>
         </label>
-        <button class="btn btn-sm" id="plan-btn-apply" style="font-size:11px;">適用</button>
+        <button class="btn btn-sm" id="plan-btn-apply">適用</button>
       </div>
-      <div id="plan-table-container" style="overflow-x:auto;max-height:65vh;"></div>
-      <div class="modal-actions" style="margin-top:12px;">
+      <div id="plan-table-container" class="plan-table-container"></div>
+      <div class="modal-actions">
         <button class="btn btn-primary" id="plan-btn-close">閉じる</button>
       </div>
     </div>
@@ -440,11 +451,11 @@
 
   <!-- Dashboard Modal -->
   <div class="modal-overlay" id="dashboard-modal">
-    <div class="modal-panel" style="width:95%;max-width:1200px;max-height:90vh;overflow:auto;">
+    <div class="modal-panel modal-panel-wide modal-panel-dashboard">
       <h3 class="modal-title">📈 リソースダッシュボード</h3>
       <div id="dashboard-content"></div>
-      <div class="modal-actions" style="margin-top:12px;">
-        <button class="btn" id="dashboard-btn-export-csv" style="margin-right:8px;">📥 CSVエクスポート</button>
+      <div class="modal-actions">
+        <button class="btn" id="dashboard-btn-export-csv">📥 CSVエクスポート</button>
         <button class="btn btn-primary" id="dashboard-btn-close">閉じる</button>
       </div>
     </div>
