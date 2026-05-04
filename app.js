@@ -3574,7 +3574,6 @@
         container.style.cursor = 'crosshair';
         render();
       }
-    }
     } else if (state.tool === 'scheduleBar') {
       pushUndo();
       const world = screenToWorld(pos.x, pos.y);
