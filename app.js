@@ -16,9 +16,9 @@
     tabs: [],
     activeTabId: null,
     viewMode: 'square', // 'square' | 'quarter'
-    tool: 'select',     // 'select' | 'region' | 'connector' | 'text' | 'scheduleBar'
+    tool: 'select',     // 'select' | 'region' | 'connector' | 'text' | 'shape' | 'timeline'
     selectedId: null,
-    selectedType: null,  // 'person' | 'region' | 'connector' | 'text' | 'scheduleBar'
+    selectedType: null,  // 'person' | 'region' | 'connector' | 'text' | 'shape' | 'timeline'
     dragging: null,
     regionDraw: null,
     connectorDraw: null, // { fromRegionId, fromSide, currentX, currentY }
@@ -224,18 +224,22 @@
     ctx.clearRect(0, 0, w, h);
     drawGrid(w, h);
     drawTimelines();
-    drawConnectors();
     drawRegions();
     drawRegionPreview();
-    drawScheduleBars();
     drawShapes();
+    drawShapePreview();
     drawTextAnnotations();
-    drawPersons();
+    drawConnectors();
     drawConnectorPreview();
+    drawPersons();
     drawConnectionPoints();
     drawRangeSelect();
-    drawScheduleBarPreview();
-    drawShapePreview();
+    drawTimelinePreview();
+  }
+
+  // ===== Multi-Selection Helper =====
+  function emptyMultiSelection() {
+    return { personIds: [], regionIds: [], textIds: [], connectorIds: [], shapeIds: [] };
   }
 
   function drawTextAnnotations() {
@@ -2687,7 +2691,6 @@
       roles: state.roles,
       connectors: state.connectors,
       textAnnotations: state.textAnnotations,
-      scheduleBars: state.scheduleBars,
       timelines: state.timelines,
       shapes: state.shapes,
       nextId: state.nextId,
@@ -2912,29 +2915,25 @@
     state.roles = snap.roles;
     state.connectors = snap.connectors || [];
     state.textAnnotations = snap.textAnnotations || [];
-    state.scheduleBars = snap.scheduleBars || [];
     state.timelines = snap.timelines || [];
     state.shapes = snap.shapes || [];
-      // Migrate scheduleBars to shapes
-      if (snap.scheduleBars && snap.scheduleBars.length > 0) {
-        snap.scheduleBars.forEach(sb => {
-          let stype = 'chevronRight';
-          if (sb.tipShape === 'doubleChevron') stype = 'doubleChevron';
-          if (sb.tipShape === 'flat') stype = 'rect';
-          if (sb.tipShape === 'arrow') stype = 'arrow';
-          if (sb.tipShape === 'diamond') stype = 'diamond';
-          state.shapes.push({
-            id: sb.id, type: stype,
-            x: sb.x, y: sb.y, w: sb.w, h: sb.h,
-            color: sb.color, label: sb.label, fontColor: '#ffffff',
-            layerId: sb.layerId || 'default'
-          });
+    // Migrate legacy scheduleBars → shapes
+    if (snap.scheduleBars && snap.scheduleBars.length > 0) {
+      const tipMap = { doubleChevron: 'doubleChevron', flat: 'rect', arrow: 'arrow', diamond: 'diamond' };
+      snap.scheduleBars.forEach(sb => {
+        state.shapes.push({
+          id: sb.id, type: tipMap[sb.tipShape] || 'chevronRight',
+          x: sb.x, y: sb.y, w: sb.w, h: sb.h,
+          color: sb.color, label: sb.label || '', fontColor: '#ffffff',
+          layerId: sb.layerId || 'default', rotation: 0, borderColor: '#2c3e50',
+          borderWidth: 1, opacity: 1, fontSize: 12,
         });
-      }
+      });
+    }
     state.nextId = snap.nextId;
     state.persons.forEach(migrateResource);
     clearSelection();
-    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+    state.multiSelection = emptyMultiSelection();
     renderPersonList();
     saveState();
     render();
@@ -3035,7 +3034,6 @@
       if (state.selectedType === 'region') return state.regions.find(r => r.id === state.selectedId);
       if (state.selectedType === 'connector') return state.connectors.find(c => c.id === state.selectedId);
       if (state.selectedType === 'text') return state.textAnnotations.find(t => t.id === state.selectedId);
-      if (state.selectedType === 'scheduleBar') return state.scheduleBars.find(b => b.id === state.selectedId);
       if (state.selectedType === 'timeline') return state.timelines.find(t => t.id === state.selectedId);
       return null;
     }
@@ -3046,8 +3044,6 @@
     if (itemPropsEl) itemPropsEl.style.display = 'none';
     if (connectorProps) connectorProps.style.display = 'none';
     if (textProps) textProps.style.display = 'none';
-    const schedBarPropsEl = document.getElementById('scheduleBar-props');
-    if (schedBarPropsEl) schedBarPropsEl.style.display = 'none';
     const timelinePropsEl = document.getElementById('timeline-props');
     if (timelinePropsEl) timelinePropsEl.style.display = 'none';
     const shapePropsEl = document.getElementById('shape-props');
@@ -3124,26 +3120,6 @@
       if (propTextContent) propTextContent.value = t.text || '';
       if (propTextFontsize) propTextFontsize.value = t.fontSize || 9;
       if (propTextColor) propTextColor.value = t.color || '#2c3e50';
-    } else if (state.selectedType === 'scheduleBar') {
-      const bar = state.scheduleBars.find(b => b.id === state.selectedId);
-      if (!bar) return;
-      const el = document.getElementById('scheduleBar-props');
-      if (el) {
-        el.style.display = 'block';
-        // Auto-show floating property panel
-        const sr = document.getElementById('sidebar-right');
-        if (sr && sr.style.display === 'none') sr.style.display = 'flex';
-        const propBarLabel = document.getElementById('prop-bar-label');
-        const propBarColor = document.getElementById('prop-bar-color');
-        const propBarTip = document.getElementById('prop-bar-tipshape');
-        const propBarW = document.getElementById('prop-bar-width');
-        const propBarH = document.getElementById('prop-bar-height');
-        if (propBarLabel) propBarLabel.value = bar.label || '';
-        if (propBarColor) propBarColor.value = bar.color || '#4a8acf';
-        if (propBarTip) propBarTip.value = bar.tipShape || 'chevron';
-        if (propBarW) propBarW.value = Math.round(bar.w);
-        if (propBarH) propBarH.value = Math.round(bar.h);
-      }
     } else if (state.selectedType === 'timeline') {
       const tl = state.timelines.find(t => t.id === state.selectedId);
       if (!tl) return;
@@ -3508,7 +3484,7 @@
         const connector = hitTestConnector(pos.x, pos.y);
         if (connector) {
           selectItem('connector', connector.id);
-          state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+          state.multiSelection = emptyMultiSelection();
           showConnectorContextMenu(e.clientX, e.clientY, connector);
           return;
         }
@@ -3547,7 +3523,7 @@
       }
 
       // Check if clicking on any multi-selected item (person or region)
-      const hasMultiSelection = state.multiSelection.personIds.length > 0 || state.multiSelection.regionIds.length > 0 || (state.multiSelection.textIds || []).length > 0 || (state.multiSelection.connectorIds || []).length > 0 || (state.multiSelection.scheduleBarIds || []).length > 0;
+      const hasMultiSelection = state.multiSelection.personIds.length > 0 || state.multiSelection.regionIds.length > 0 || (state.multiSelection.textIds || []).length > 0 || (state.multiSelection.connectorIds || []).length > 0;
 
       const person = hitTestPerson(pos.x, pos.y);
       if (person) {
@@ -3587,7 +3563,7 @@
           }
         }
         selectItem('person', person.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+        state.multiSelection = emptyMultiSelection();
         pushUndo();
         state.dragging = {
           type: 'person',
@@ -3623,7 +3599,7 @@
           return;
         }
         selectItem('region', region.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+        state.multiSelection = emptyMultiSelection();
         const s = worldToScreen(region.x, region.y);
         const childPersonIds = state.persons.filter(p =>
           p.x >= region.x && p.x <= region.x + region.w &&
@@ -3724,7 +3700,7 @@
           return;
         }
         selectItem('text', textAnn.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+        state.multiSelection = emptyMultiSelection();
         pushUndo();
         state.dragging = {
           type: 'text',
@@ -3759,7 +3735,7 @@
           return;
         }
         selectItem('connector', connector.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+        state.multiSelection = emptyMultiSelection();
         if (connector.freeForm) {
           const endpoint = hitTestFreeFormEndpoint(pos.x, pos.y, connector);
           pushUndo();
@@ -3783,59 +3759,6 @@
         return;
       }
 
-      // Check for scheduleBar resize
-      const sbResize = hitTestScheduleBarResize(pos.x, pos.y);
-      if (sbResize) {
-        const bar = state.scheduleBars.find(b => b.id === state.selectedId);
-        if (bar) {
-          pushUndo();
-          state.dragging = {
-            type: 'scheduleBar-resize',
-            id: bar.id,
-            dir: sbResize,
-            origX: bar.x,
-            origY: bar.y,
-            origW: bar.w,
-            origH: bar.h,
-            startPos: screenToWorld(pos.x, pos.y),
-          };
-          container.style.cursor = 'ew-resize';
-          return;
-        }
-      }
-
-      // Check for scheduleBar click
-      const schedBar = hitTestScheduleBar(pos.x, pos.y);
-      if (schedBar) {
-        if (e.ctrlKey) {
-          const idx = (state.multiSelection.scheduleBarIds || []).indexOf(schedBar.id);
-          if (idx >= 0) {
-            state.multiSelection.scheduleBarIds.splice(idx, 1);
-          } else {
-            state.multiSelection.scheduleBarIds.push(schedBar.id);
-          }
-          updatePropsPanel();
-          render();
-          return;
-        }
-        if ((state.multiSelection.scheduleBarIds || []).includes(schedBar.id)) {
-          pushUndo();
-          const startWorld = screenToWorld(pos.x, pos.y);
-          state.dragging = { type: 'multi', lastWorld: startWorld };
-          container.style.cursor = 'grabbing';
-          return;
-        }
-        selectItem('scheduleBar', schedBar.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
-        pushUndo();
-        state.dragging = {
-          type: 'scheduleBar',
-          id: schedBar.id,
-          lastWorld: screenToWorld(pos.x, pos.y),
-        };
-        container.style.cursor = 'grabbing';
-        return;
-      }
 
       // Check for shape rotation handle
       const shapeRot = hitTestShapeRotation(pos.x, pos.y);
@@ -3894,7 +3817,7 @@
           return;
         }
         selectItem('shape', shapeHit.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+        state.multiSelection = emptyMultiSelection();
         pushUndo();
         state.dragging = {
           type: 'shape',
@@ -3928,7 +3851,7 @@
       const tlHit = hitTestTimeline(pos.x, pos.y);
       if (tlHit) {
         selectItem('timeline', tlHit.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+        state.multiSelection = emptyMultiSelection();
         pushUndo();
         state.dragging = {
           type: 'timeline',
@@ -3941,7 +3864,7 @@
 
       // Empty space left drag -> range selection
       clearSelection();
-      state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+      state.multiSelection = emptyMultiSelection();
       state.rangeSelect = {
         startX: pos.x,
         startY: pos.y,
@@ -3984,17 +3907,6 @@
         container.style.cursor = 'crosshair';
         render();
       }
-    } else if (state.tool === 'scheduleBar') {
-      pushUndo();
-      const world = screenToWorld(pos.x, pos.y);
-      state.scheduleBarDraw = {
-        x: world.x,
-        y: world.y,
-        w: 0,
-        h: 0,
-        startX: world.x,
-        startY: world.y,
-      };
     } else if (state.tool === 'shape') {
       const world = screenToWorld(pos.x, pos.y);
       state.shapeDraw = {
@@ -4094,11 +4006,6 @@
           const c = state.connectors.find(c => c.id === cid);
           if (c && c.freeForm) { c.fromX += dx; c.fromY += dy; c.toX += dx; c.toY += dy; }
         });
-        // Move selected scheduleBars
-        (state.multiSelection.scheduleBarIds || []).forEach(bid => {
-          const b = state.scheduleBars.find(b => b.id === bid);
-          if (b) { b.x += dx; b.y += dy; }
-        });
         // Move selected shapes
         (state.multiSelection.shapeIds || []).forEach(sid => {
           const s = state.shapes.find(s => s.id === sid);
@@ -4173,38 +4080,6 @@
           if (dir.includes('n')) { ny = ny + dy; nh = Math.max(MIN_SIZE, nh - dy); if (nh === MIN_SIZE) ny = state.dragging.origY + state.dragging.origH - MIN_SIZE; }
 
           r.x = nx; r.y = ny; r.w = nw; r.h = nh;
-          render();
-        }
-      } else if (state.dragging.type === 'scheduleBar') {
-        const bar = state.scheduleBars.find(b => b.id === state.dragging.id);
-        if (bar) {
-          const world = screenToWorld(pos.x, pos.y);
-          const dx = world.x - state.dragging.lastWorld.x;
-          const dy = world.y - state.dragging.lastWorld.y;
-          bar.x += dx;
-          bar.y += dy;
-          state.dragging.lastWorld = world;
-          render();
-        }
-      } else if (state.dragging.type === 'scheduleBar-resize') {
-        const bar = state.scheduleBars.find(b => b.id === state.dragging.id);
-        if (bar) {
-          const world = screenToWorld(pos.x, pos.y);
-          const dx = world.x - state.dragging.startPos.x;
-          const MIN_W = 20, MIN_H = 10;
-          if (state.dragging.dir === 'right') {
-            bar.w = Math.max(MIN_W, state.dragging.origW + dx);
-          } else if (state.dragging.dir === 'left') {
-            const newW = state.dragging.origW - dx;
-            if (newW >= MIN_W) {
-              bar.x = state.dragging.origX + dx;
-              bar.w = newW;
-            }
-          } else if (state.dragging.dir === 'bottom-right') {
-            const dy = world.y - state.dragging.startPos.y;
-            bar.w = Math.max(MIN_W, state.dragging.origW + dx);
-            bar.h = Math.max(MIN_H, state.dragging.origH + dy);
-          }
           render();
         }
       } else if (state.dragging.type === 'shape') {
@@ -4298,17 +4173,6 @@
       return;
     }
 
-    if (state.scheduleBarDraw) {
-      const world = screenToWorld(pos.x, pos.y);
-      const d = state.scheduleBarDraw;
-      d.x = Math.min(d.startX, world.x);
-      d.y = Math.min(d.startY, world.y);
-      d.w = Math.abs(world.x - d.startX);
-      d.h = Math.abs(world.y - d.startY);
-      render();
-      return;
-    }
-
     if (state.shapeDraw) {
       const world = screenToWorld(pos.x, pos.y);
       state.shapeDraw.currentX = world.x;
@@ -4330,8 +4194,6 @@
       const wpHandle = hitTestWaypointHandle(pos.x, pos.y);
       const mpHandle = hitTestMidpointHandle(pos.x, pos.y);
       const connectorLine = hitTestConnector(pos.x, pos.y);
-      const schedBar = hitTestScheduleBar(pos.x, pos.y);
-      const sbResizeCheck = hitTestScheduleBarResize(pos.x, pos.y);
       const tlResizeCheck = hitTestTimelineResize(pos.x, pos.y);
       const shapeRotCheck = hitTestShapeRotation(pos.x, pos.y);
       const shapeResCheck = hitTestShapeResize(pos.x, pos.y);
@@ -4346,9 +4208,9 @@
         container.style.cursor = tlResizeCheck.dir === 'right' ? 'ew-resize' :
                                   tlResizeCheck.dir === 'bottom' ? 'ns-resize' : 'nwse-resize';
       } else {
-        container.style.cursor = shapeCheck ? 'grab' : (sbResizeCheck ? 'ew-resize' : (wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (schedBar ? 'grab' : (connectorLine ? 'pointer' : 'default'))))))));
+        container.style.cursor = shapeCheck ? 'grab' : (wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (connectorLine ? 'pointer' : 'default'))))));
       }
-    } else if (state.tool === 'region' || state.tool === 'scheduleBar' || state.tool === 'shape') {
+    } else if (state.tool === 'region' || state.tool === 'shape') {
       container.style.cursor = 'crosshair';
     } else if (state.tool === 'connector') {
       const cp = hitTestConnectionPoint(pos.x, pos.y);
@@ -4396,15 +4258,11 @@
         return minX >= wx1 && maxX <= wx2 && minY >= wy1 && maxY <= wy2;
       }).map(c => c.id);
 
-      const selectedBarIds = state.scheduleBars.filter(b => {
-        return b.x >= wx1 && b.x + b.w <= wx2 && b.y >= wy1 && b.y + b.h <= wy2;
-      }).map(b => b.id);
-
       const selectedShapeIds = state.shapes.filter(s => {
         return s.x >= wx1 && s.x + s.w <= wx2 && s.y >= wy1 && s.y + s.h <= wy2;
       }).map(s => s.id);
 
-      state.multiSelection = { personIds: selectedPersonIds, regionIds: selectedRegionIds, textIds: selectedTextIds, connectorIds: selectedConnectorIds, scheduleBarIds: selectedBarIds, shapeIds: selectedShapeIds };
+      state.multiSelection = { personIds: selectedPersonIds, regionIds: selectedRegionIds, textIds: selectedTextIds, connectorIds: selectedConnectorIds, shapeIds: selectedShapeIds };
       state.rangeSelect = null;
       container.style.cursor = 'default';
       updatePropsPanel();
@@ -4507,29 +4365,6 @@
       render();
     }
 
-    if (state.scheduleBarDraw) {
-      const d = state.scheduleBarDraw;
-      if (d.w > 10 && d.h > 5) {
-        const bar = {
-          id: state.nextId++,
-          label: '',
-          x: d.x,
-          y: d.y,
-          w: d.w,
-          h: d.h,
-          color: '#4a8acf',
-          tipShape: 'chevron',
-          layerId: state.activeLayerId,
-        };
-        state.scheduleBars.push(bar);
-        selectItem('scheduleBar', bar.id);
-        saveState();
-        setToolActive('select');
-      }
-      state.scheduleBarDraw = null;
-      render();
-    }
-
     if (state.shapeDraw) {
       const d = state.shapeDraw;
       const x = Math.min(d.startX, d.currentX);
@@ -4595,22 +4430,7 @@
       }
     }
 
-    // ScheduleBar label editing
-    const schedBar = hitTestScheduleBar(pos.x, pos.y);
-    if (schedBar) {
-      const label = prompt('スケジュールバーのラベルを入力してください:', schedBar.label || '');
-      if (label !== null) {
-        pushUndo();
-        schedBar.label = label;
-        if (state.selectedType === 'scheduleBar' && state.selectedId === schedBar.id) {
-          const propBarLabel = document.getElementById('prop-bar-label');
-          if (propBarLabel) propBarLabel.value = label;
-        }
-        saveState();
-        render();
-      }
-      return;
-    }
+
   });
 
   // ===== Mouse Wheel Zoom =====
@@ -5022,16 +4842,11 @@
       // Delete multi-selected connectors
       (state.multiSelection.connectorIds || []).forEach(cid => {
         state.connectors = state.connectors.filter(c => c.id !== cid);
-      });
-      // Delete multi-selected scheduleBars
-      (state.multiSelection.scheduleBarIds || []).forEach(bid => {
-        state.scheduleBars = state.scheduleBars.filter(b => b.id !== bid);
-      });
-      // Delete multi-selected shapes
+      });      // Delete multi-selected shapes
       (state.multiSelection.shapeIds || []).forEach(sid => {
         state.shapes = state.shapes.filter(s => s.id !== sid);
       });
-      state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+      state.multiSelection = emptyMultiSelection();
       clearSelection();
       renderPersonList();
       saveState();
@@ -5057,12 +4872,6 @@
     } else if (state.selectedType === 'text') {
       pushUndo();
       state.textAnnotations = state.textAnnotations.filter(t => t.id !== state.selectedId);
-      clearSelection();
-      saveState();
-      render();
-    } else if (state.selectedType === 'scheduleBar') {
-      pushUndo();
-      state.scheduleBars = state.scheduleBars.filter(b => b.id !== state.selectedId);
       clearSelection();
       saveState();
       render();
@@ -5740,7 +5549,6 @@
           regions: JSON.parse(JSON.stringify(state.regions)),
           connectors: JSON.parse(JSON.stringify(state.connectors)),
           textAnnotations: JSON.parse(JSON.stringify(state.textAnnotations)),
-          scheduleBars: JSON.parse(JSON.stringify(state.scheduleBars)),
           timelines: JSON.parse(JSON.stringify(state.timelines)),
           shapes: JSON.parse(JSON.stringify(state.shapes)),
           layers: JSON.parse(JSON.stringify(state.layers)),
@@ -5756,7 +5564,6 @@
       roles: state.roles,
       connectors: state.connectors,
       textAnnotations: state.textAnnotations,
-      scheduleBars: state.scheduleBars,
       timelines: state.timelines,
       shapes: state.shapes,
       layers: state.layers,
@@ -5780,18 +5587,19 @@
         state.roles = data.roles || [];
         state.connectors = data.connectors || [];
         state.textAnnotations = data.textAnnotations || [];
-        state.scheduleBars = data.scheduleBars || [];
+        // (scheduleBars migrated to shapes below)
         state.timelines = data.timelines || [];
         state.shapes = data.shapes || [];
+        // Migrate legacy scheduleBars → shapes
         if (data.scheduleBars && data.scheduleBars.length > 0) {
+          const tipMap = { doubleChevron: 'doubleChevron', flat: 'rect', arrow: 'arrow', diamond: 'diamond' };
           data.scheduleBars.forEach(sb => {
-            let stype = 'chevronRight';
-            if (sb.tipShape === 'doubleChevron') stype = 'doubleChevron';
-            if (sb.tipShape === 'flat') stype = 'rect';
-            if (sb.tipShape === 'arrow') stype = 'arrow';
-            if (sb.tipShape === 'diamond') stype = 'diamond';
             state.shapes.push({
-              id: sb.id, type: stype, x: sb.x, y: sb.y, w: sb.w, h: sb.h, color: sb.color, label: sb.label, fontColor: '#ffffff', layerId: sb.layerId || 'default'
+              id: sb.id, type: tipMap[sb.tipShape] || 'chevronRight',
+              x: sb.x, y: sb.y, w: sb.w, h: sb.h,
+              color: sb.color, label: sb.label || '', fontColor: '#ffffff',
+              layerId: sb.layerId || 'default', rotation: 0, borderColor: '#2c3e50',
+              borderWidth: 1, opacity: 1, fontSize: 12,
             });
           });
         }
@@ -6386,32 +6194,7 @@
     });
     if (connEls.length) els.push(`<g id="connectors">${connEls.join('')}</g>`);
 
-    // 6. Schedule Bars
-    const barEls = [];
-    state.scheduleBars.forEach(bar => {
-      if (!isOnVisibleLayer(bar)) return;
-      const s = worldToScreen(bar.x, bar.y);
-      const e = worldToScreen(bar.x + bar.w, bar.y + bar.h);
-      const sw3 = e.x - s.x, sh3 = e.y - s.y;
-      if (sw3 < 1 || sh3 < 1) return;
-      const tipW = Math.min(sh3 * 0.5, sw3 * 0.3);
-      const bc = bar.color || '#4a8acf';
-      let d = '';
-      switch (bar.tipShape || 'chevron') {
-        case 'chevron':       d = `M${s.x},${s.y} L${e.x-tipW},${s.y} L${e.x},${s.y+sh3/2} L${e.x-tipW},${e.y} L${s.x},${e.y} Z`; break;
-        case 'doubleChevron': d = `M${s.x+tipW},${s.y} L${e.x-tipW},${s.y} L${e.x},${s.y+sh3/2} L${e.x-tipW},${e.y} L${s.x+tipW},${e.y} L${s.x},${s.y+sh3/2} Z`; break;
-        case 'flat':          d = `M${s.x},${s.y} h${sw3} v${sh3} h${-sw3} Z`; break;
-        case 'diamond': {const mcx=s.x+sw3/2,mcy=s.y+sh3/2; d=`M${mcx},${s.y} L${e.x},${mcy} L${mcx},${e.y} L${s.x},${mcy} Z`; break;}
-        case 'arrow':         d = `M${s.x},${s.y} L${e.x-tipW},${s.y} L${e.x-tipW},${s.y-sh3*0.15} L${e.x},${s.y+sh3/2} L${e.x-tipW},${e.y+sh3*0.15} L${e.x-tipW},${e.y} L${s.x},${e.y} Z`; break;
-        default:              d = `M${s.x},${s.y} h${sw3} v${sh3} h${-sw3} Z`;
-      }
-      barEls.push(`<path d="${d}" fill="${bc}" stroke="${darkenColor(bc,0.2)}" stroke-width="1"/>`);
-      if (bar.label) {
-        const contrastColor = getContrastColor(bc);
-        barEls.push(`<text x="${(s.x+sw3/2).toFixed(1)}" y="${(s.y+sh3/2).toFixed(1)}" fill="${contrastColor}" font-size="${Math.min(sh3*0.6,14*state.zoom).toFixed(1)}" font-family="Segoe UI,Meiryo,sans-serif" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${esc(bar.label)}</text>`);
-      }
-    });
-    if (barEls.length) els.push(`<g id="schedulebars">${barEls.join('')}</g>`);
+    // 6 (removed: scheduleBars)
 
     // 7. Shapes (15 types)
     const shapeEls = [];
@@ -6765,7 +6548,6 @@ ${els.join('\n')}
       regions: JSON.parse(JSON.stringify(state.regions)),
       connectors: JSON.parse(JSON.stringify(state.connectors)),
       textAnnotations: JSON.parse(JSON.stringify(state.textAnnotations)),
-      scheduleBars: JSON.parse(JSON.stringify(state.scheduleBars)),
       timelines: JSON.parse(JSON.stringify(state.timelines)),
       shapes: JSON.parse(JSON.stringify(state.shapes)),
       layers: JSON.parse(JSON.stringify(state.layers)),
@@ -6780,18 +6562,18 @@ ${els.join('\n')}
     state.regions = tabData.regions || [];
     state.connectors = tabData.connectors || [];
     state.textAnnotations = tabData.textAnnotations || [];
-    state.scheduleBars = tabData.scheduleBars || [];
     state.timelines = tabData.timelines || [];
     state.shapes = tabData.shapes || [];
+    // Migrate legacy scheduleBars → shapes
     if (tabData.scheduleBars && tabData.scheduleBars.length > 0) {
+      const tipMap = { doubleChevron: 'doubleChevron', flat: 'rect', arrow: 'arrow', diamond: 'diamond' };
       tabData.scheduleBars.forEach(sb => {
-        let stype = 'chevronRight';
-        if (sb.tipShape === 'doubleChevron') stype = 'doubleChevron';
-        if (sb.tipShape === 'flat') stype = 'rect';
-        if (sb.tipShape === 'arrow') stype = 'arrow';
-        if (sb.tipShape === 'diamond') stype = 'diamond';
         state.shapes.push({
-          id: sb.id, type: stype, x: sb.x, y: sb.y, w: sb.w, h: sb.h, color: sb.color, label: sb.label, fontColor: '#ffffff', layerId: sb.layerId || 'default'
+          id: sb.id, type: tipMap[sb.tipShape] || 'chevronRight',
+          x: sb.x, y: sb.y, w: sb.w, h: sb.h,
+          color: sb.color, label: sb.label || '', fontColor: '#ffffff',
+          layerId: sb.layerId || 'default', rotation: 0, borderColor: '#2c3e50',
+          borderWidth: 1, opacity: 1, fontSize: 12,
         });
       });
     }
@@ -6801,7 +6583,7 @@ ${els.join('\n')}
     state.zoom = tabData.zoom || 1.0;
     state.persons.forEach(p => { if (!p.roleIds) p.roleIds = []; });
     clearSelection();
-    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+    state.multiSelection = emptyMultiSelection();
     updateZoomLabel();
     renderPersonList();
     renderLayerList();
