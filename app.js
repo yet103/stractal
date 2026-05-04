@@ -445,6 +445,7 @@
       const rowH = (tl.rowHeight || 30) * state.zoom;
       const rowCount = tl.rowCount || 5;
       const headerH = (tl.headerHeight || 50) * state.zoom;
+      const fontSize = tl.fontSize || 11;
 
       const origin = worldToScreen(tl.x, tl.y);
       const totalW = monthW * monthCount;
@@ -452,21 +453,20 @@
 
       ctx.save();
 
-      // Background
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(origin.x, origin.y, totalW, totalH);
+      // NO opaque background — transparent
 
-      // Quarter background bands
+      // Quarter background bands (semi-transparent)
       for (let m = 0; m < monthCount; m++) {
         const absMonth = startMonth + m;
         const q = Math.floor(((absMonth - 1) % 12) / 3);
-        ctx.fillStyle = QUARTER_COLORS[q] + '60'; // semi-transparent
+        ctx.fillStyle = QUARTER_COLORS[q] + '30'; // very light
         ctx.fillRect(origin.x + m * monthW, origin.y + headerH, monthW, rowH * rowCount);
       }
 
       // Year headers
+      const yearFontSize = Math.max(10, (fontSize + 2) * state.zoom);
       ctx.fillStyle = '#2c3e50';
-      ctx.font = `bold ${Math.max(10, 13 * state.zoom)}px "Segoe UI", "Meiryo", sans-serif`;
+      ctx.font = `bold ${yearFontSize}px "Segoe UI", "Meiryo", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       let curYear = startYear;
@@ -475,7 +475,6 @@
         const absMonth = startMonth + m;
         const yr = startYear + Math.floor((absMonth - 1) / 12);
         if (yr !== curYear || m === monthCount) {
-          // Draw year label for curYear spanning yearStart to m
           const x1 = origin.x + yearStart * monthW;
           const x2 = origin.x + m * monthW;
           // Year header band
@@ -489,7 +488,8 @@
       }
 
       // Month headers
-      ctx.font = `${Math.max(9, 11 * state.zoom)}px "Segoe UI", "Meiryo", sans-serif`;
+      const monthFontSize = Math.max(9, fontSize * state.zoom);
+      ctx.font = `${monthFontSize}px "Segoe UI", "Meiryo", sans-serif`;
       for (let m = 0; m < monthCount; m++) {
         const absMonth = startMonth + m;
         const displayMonth = ((absMonth - 1) % 12) + 1;
@@ -513,17 +513,14 @@
         const lx = origin.x + m * monthW;
 
         if (displayMonth === 1 || m === 0) {
-          // Year boundary: thick solid
           ctx.strokeStyle = '#2c3e50';
           ctx.lineWidth = 2.5;
           ctx.setLineDash([]);
         } else if (displayMonth === 4 || displayMonth === 7 || displayMonth === 10) {
-          // Quarter boundary: medium solid
           ctx.strokeStyle = '#7f8c8d';
           ctx.lineWidth = 1.5;
           ctx.setLineDash([]);
         } else {
-          // Month boundary: thin dashed
           ctx.strokeStyle = '#bdc3c7';
           ctx.lineWidth = 0.5;
           ctx.setLineDash([4, 4]);
@@ -556,7 +553,7 @@
 
       // Row labels (left side)
       if (tl.rowLabels && tl.rowLabels.length > 0) {
-        ctx.font = `${Math.max(9, 11 * state.zoom)}px "Segoe UI", "Meiryo", sans-serif`;
+        ctx.font = `${monthFontSize}px "Segoe UI", "Meiryo", sans-serif`;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#2c3e50';
@@ -573,9 +570,9 @@
       if (isSelected) {
         const hs = 7;
         ctx.fillStyle = '#ff6b35';
-        // Right-mid handle (drag to change month width / count)
+        // Right-mid handle (drag to change monthWidth)
         ctx.fillRect(origin.x + totalW - hs/2, origin.y + headerH + (rowH * rowCount)/2 - hs/2, hs, hs);
-        // Bottom-mid handle (drag to change row count)
+        // Bottom-mid handle (drag to change rowHeight)
         ctx.fillRect(origin.x + totalW/2 - hs/2, origin.y + totalH - hs/2, hs, hs);
         // Bottom-right corner handle (drag both)
         ctx.fillRect(origin.x + totalW - hs/2, origin.y + totalH - hs/2, hs, hs);
@@ -2901,6 +2898,7 @@
         if (f('prop-tl-monthWidth')) f('prop-tl-monthWidth').value = tl.monthWidth || 80;
         if (f('prop-tl-rowCount')) f('prop-tl-rowCount').value = tl.rowCount || 5;
         if (f('prop-tl-rowHeight')) f('prop-tl-rowHeight').value = tl.rowHeight || 30;
+        if (f('prop-tl-fontSize')) f('prop-tl-fontSize').value = tl.fontSize || 11;
       }
     } else if (state.multiSelection.personIds.length > 0) {
       // Multi-selection: show color picker for batch color change
@@ -3563,6 +3561,7 @@
           origMonthCount: tlResize.tl.monthCount || 12,
           origMonthWidth: tlResize.tl.monthWidth || 80,
           origRowCount: tlResize.tl.rowCount || 5,
+          origRowHeight: tlResize.tl.rowHeight || 30,
         };
         container.style.cursor = tlResize.dir === 'right' ? 'ew-resize' :
                                   tlResize.dir === 'bottom' ? 'ns-resize' : 'nwse-resize';
@@ -3856,19 +3855,18 @@
           const world = screenToWorld(pos.x, pos.y);
           const dx = world.x - state.dragging.startWorld.x;
           const dy = world.y - state.dragging.startWorld.y;
-          const mw = state.dragging.origMonthWidth;
+          const mc = state.dragging.origMonthCount;
+          const rc = state.dragging.origRowCount;
 
           if (state.dragging.dir === 'right' || state.dragging.dir === 'bottom-right') {
-            // Snap to whole months: total width = origMonthCount * mw + dx
-            const newTotalW = state.dragging.origMonthCount * mw + dx;
-            const newMonthCount = Math.max(3, Math.round(newTotalW / mw));
-            tl.monthCount = newMonthCount;
+            // Change monthWidth: total = origMonthWidth * mc + dx → newMonthWidth = total / mc
+            const newTotalW = state.dragging.origMonthWidth * mc + dx;
+            tl.monthWidth = Math.max(20, Math.round(newTotalW / mc));
           }
           if (state.dragging.dir === 'bottom' || state.dragging.dir === 'bottom-right') {
-            const rh = tl.rowHeight || 30;
-            const newTotalH = state.dragging.origRowCount * rh + dy;
-            const newRowCount = Math.max(1, Math.round(newTotalH / rh));
-            tl.rowCount = newRowCount;
+            const origRH = state.dragging.origRowHeight || 30;
+            const newTotalH = origRH * rc + dy;
+            tl.rowHeight = Math.max(15, Math.round(newTotalH / rc));
           }
           updatePropsPanel();
           render();
@@ -5441,7 +5439,7 @@
 
   // Timeline property change listeners
   function setupTimelinePropListeners() {
-    const fields = ['startYear', 'startMonth', 'monthCount', 'monthWidth', 'rowCount', 'rowHeight'];
+    const fields = ['startYear', 'startMonth', 'monthCount', 'monthWidth', 'rowCount', 'rowHeight', 'fontSize'];
     fields.forEach(field => {
       const el = document.getElementById('prop-tl-' + field);
       if (el) {
