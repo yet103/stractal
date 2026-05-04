@@ -4570,6 +4570,7 @@
           state.connectors.push(connector);
           selectItem('connector', connector.id);
           saveState();
+          setToolActive('select');
         }
       } else {
         // Region-to-region connector
@@ -4598,6 +4599,7 @@
           state.connectors.push(connector);
           selectItem('connector', connector.id);
           saveState();
+          setToolActive('select');
         }
       }
       state.connectorDraw = null;
@@ -4623,6 +4625,7 @@
         state.regions.push(region);
         selectItem('region', region.id);
         saveState();
+        setToolActive('select');
       }
 
       state.regionDraw = null;
@@ -4646,6 +4649,7 @@
         state.scheduleBars.push(bar);
         selectItem('scheduleBar', bar.id);
         saveState();
+        setToolActive('select');
       }
       state.scheduleBarDraw = null;
       render();
@@ -4662,6 +4666,7 @@
           type: state.activeShapeType,
           x, y, w, h,
         });
+        setToolActive('select');
       }
       state.shapeDraw = null;
       render();
@@ -6182,6 +6187,7 @@
       state.textAnnotations.push(t);
       selectItem('text', t.id);
       saveState();
+      setToolActive('select');
     }
   });
 
