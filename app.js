@@ -11,6 +11,7 @@
     textAnnotations: [],
     scheduleBars: [],
     timelines: [],
+    shapes: [],
     layers: [{ id: 1, name: 'メイン', visible: true, locked: false }],
     activeLayerId: 1,
     tabs: [],
@@ -23,7 +24,7 @@
     regionDraw: null,
     connectorDraw: null, // { fromRegionId, fromSide, currentX, currentY }
     rangeSelect: null,
-    multiSelection: { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] },
+    multiSelection: { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] },
     shiftHeld: false,
     prevTool: null, // for shift-key temp connector mode
     addingWaypoints: false, // show "+" handles for adding waypoints
@@ -228,6 +229,7 @@
     drawRegions();
     drawRegionPreview();
     drawScheduleBars();
+    drawShapes();
     drawTextAnnotations();
     drawPersons();
     drawConnectorPreview();
@@ -427,6 +429,357 @@
     // Bottom-right corner
     if (Math.abs(sx - e.x) < handleSize && Math.abs(sy - e.y) < handleSize) return 'bottom-right';
     return null;
+  }
+
+  // ===== Shape Drawing Engine =====
+  const SHAPE_TYPES = [
+    { type: 'rect',          label: '矩形',       icon: '■' },
+    { type: 'roundedRect',   label: '角丸',       icon: '▢' },
+    { type: 'ellipse',       label: '楕円',       icon: '●' },
+    { type: 'triangle',      label: '三角形',     icon: '▲' },
+    { type: 'diamond',       label: 'ひし形',     icon: '◆' },
+    { type: 'hexagon',       label: '六角形',     icon: '⬡' },
+    { type: 'pentagon',      label: '五角形',     icon: '⬠' },
+    { type: 'star',          label: '星',         icon: '★' },
+    { type: 'arrow',         label: '矢印(右)',   icon: '➡' },
+    { type: 'chevronRight',  label: 'シェブロン→', icon: '▷' },
+    { type: 'chevronLeft',   label: 'シェブロン←', icon: '◁' },
+    { type: 'callout',       label: '吹き出し',   icon: '💬' },
+    { type: 'cross',         label: '十字',       icon: '✚' },
+    { type: 'pill',          label: 'カプセル',    icon: '⊂⊃' },
+    { type: 'parallelogram', label: '平行四辺形',  icon: '▱' },
+  ];
+
+  function buildShapePath(ctx, type, w, h) {
+    const hw = w / 2, hh = h / 2;
+    ctx.beginPath();
+    switch (type) {
+      case 'rect':
+        ctx.rect(-hw, -hh, w, h);
+        break;
+      case 'roundedRect': {
+        const r = Math.min(w, h) * 0.15;
+        ctx.moveTo(-hw + r, -hh);
+        ctx.lineTo(hw - r, -hh);
+        ctx.arcTo(hw, -hh, hw, -hh + r, r);
+        ctx.lineTo(hw, hh - r);
+        ctx.arcTo(hw, hh, hw - r, hh, r);
+        ctx.lineTo(-hw + r, hh);
+        ctx.arcTo(-hw, hh, -hw, hh - r, r);
+        ctx.lineTo(-hw, -hh + r);
+        ctx.arcTo(-hw, -hh, -hw + r, -hh, r);
+        ctx.closePath();
+        break;
+      }
+      case 'ellipse':
+        ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
+        break;
+      case 'triangle':
+        ctx.moveTo(0, -hh);
+        ctx.lineTo(hw, hh);
+        ctx.lineTo(-hw, hh);
+        ctx.closePath();
+        break;
+      case 'diamond':
+        ctx.moveTo(0, -hh);
+        ctx.lineTo(hw, 0);
+        ctx.lineTo(0, hh);
+        ctx.lineTo(-hw, 0);
+        ctx.closePath();
+        break;
+      case 'hexagon': {
+        const sx = hw * 0.5;
+        ctx.moveTo(-sx, -hh);
+        ctx.lineTo(sx, -hh);
+        ctx.lineTo(hw, 0);
+        ctx.lineTo(sx, hh);
+        ctx.lineTo(-sx, hh);
+        ctx.lineTo(-hw, 0);
+        ctx.closePath();
+        break;
+      }
+      case 'pentagon':
+        for (let i = 0; i < 5; i++) {
+          const a = (i * 2 * Math.PI / 5) - Math.PI / 2;
+          const px = Math.cos(a) * hw;
+          const py = Math.sin(a) * hh;
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        break;
+      case 'star': {
+        for (let i = 0; i < 10; i++) {
+          const a = (i * Math.PI / 5) - Math.PI / 2;
+          const r2 = i % 2 === 0 ? 1 : 0.4;
+          const px = Math.cos(a) * hw * r2;
+          const py = Math.sin(a) * hh * r2;
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        break;
+      }
+      case 'arrow': {
+        const tipW = Math.min(hh, hw * 0.4);
+        const bodyH = hh * 0.5;
+        ctx.moveTo(-hw, -bodyH);
+        ctx.lineTo(hw - tipW, -bodyH);
+        ctx.lineTo(hw - tipW, -hh);
+        ctx.lineTo(hw, 0);
+        ctx.lineTo(hw - tipW, hh);
+        ctx.lineTo(hw - tipW, bodyH);
+        ctx.lineTo(-hw, bodyH);
+        ctx.closePath();
+        break;
+      }
+      case 'chevronRight': {
+        const tipW = Math.min(hh, hw * 0.35);
+        ctx.moveTo(-hw, -hh);
+        ctx.lineTo(hw - tipW, -hh);
+        ctx.lineTo(hw, 0);
+        ctx.lineTo(hw - tipW, hh);
+        ctx.lineTo(-hw, hh);
+        ctx.closePath();
+        break;
+      }
+      case 'chevronLeft': {
+        const tipW = Math.min(hh, hw * 0.35);
+        ctx.moveTo(-hw + tipW, -hh);
+        ctx.lineTo(hw, -hh);
+        ctx.lineTo(hw, hh);
+        ctx.lineTo(-hw + tipW, hh);
+        ctx.lineTo(-hw, 0);
+        ctx.closePath();
+        break;
+      }
+      case 'callout': {
+        const r = Math.min(w, h) * 0.1;
+        const tailW = w * 0.12, tailH = h * 0.2;
+        // Body (rounded rect without bottom-left corner)
+        ctx.moveTo(-hw + r, -hh);
+        ctx.lineTo(hw - r, -hh);
+        ctx.arcTo(hw, -hh, hw, -hh + r, r);
+        ctx.lineTo(hw, hh - r);
+        ctx.arcTo(hw, hh, hw - r, hh, r);
+        // Tail
+        ctx.lineTo(-hw + tailW * 2, hh);
+        ctx.lineTo(-hw + tailW * 0.5, hh + tailH);
+        ctx.lineTo(-hw + tailW, hh);
+        ctx.lineTo(-hw + r, hh);
+        ctx.arcTo(-hw, hh, -hw, hh - r, r);
+        ctx.lineTo(-hw, -hh + r);
+        ctx.arcTo(-hw, -hh, -hw + r, -hh, r);
+        ctx.closePath();
+        break;
+      }
+      case 'cross': {
+        const armW = hw * 0.35;
+        const armH = hh * 0.35;
+        ctx.moveTo(-armW, -hh);
+        ctx.lineTo(armW, -hh);
+        ctx.lineTo(armW, -armH);
+        ctx.lineTo(hw, -armH);
+        ctx.lineTo(hw, armH);
+        ctx.lineTo(armW, armH);
+        ctx.lineTo(armW, hh);
+        ctx.lineTo(-armW, hh);
+        ctx.lineTo(-armW, armH);
+        ctx.lineTo(-hw, armH);
+        ctx.lineTo(-hw, -armH);
+        ctx.lineTo(-armW, -armH);
+        ctx.closePath();
+        break;
+      }
+      case 'pill':
+        ctx.moveTo(-hw + hh, -hh);
+        ctx.lineTo(hw - hh, -hh);
+        ctx.arc(hw - hh, 0, hh, -Math.PI / 2, Math.PI / 2);
+        ctx.lineTo(-hw + hh, hh);
+        ctx.arc(-hw + hh, 0, hh, Math.PI / 2, -Math.PI / 2);
+        ctx.closePath();
+        break;
+      case 'parallelogram': {
+        const skew = hw * 0.25;
+        ctx.moveTo(-hw + skew, -hh);
+        ctx.lineTo(hw, -hh);
+        ctx.lineTo(hw - skew, hh);
+        ctx.lineTo(-hw, hh);
+        ctx.closePath();
+        break;
+      }
+      default:
+        ctx.rect(-hw, -hh, w, h);
+    }
+  }
+
+  function drawShapes() {
+    state.shapes.forEach(shape => {
+      if (!isOnVisibleLayer(shape)) return;
+      const isSelected = (state.selectedType === 'shape' && state.selectedId === shape.id);
+      const isMulti = state.multiSelection.shapeIds && state.multiSelection.shapeIds.includes(shape.id);
+
+      const cx = shape.x + shape.w / 2;
+      const cy = shape.y + shape.h / 2;
+      const origin = worldToScreen(cx, cy);
+      const sw = shape.w * state.zoom;
+      const sh = shape.h * state.zoom;
+      const rot = shape.rotation || 0;
+
+      ctx.save();
+      ctx.translate(origin.x, origin.y);
+      ctx.rotate(rot);
+
+      // Draw shape path
+      buildShapePath(ctx, shape.type, sw, sh);
+      ctx.fillStyle = shape.color || '#4a90d9';
+      ctx.globalAlpha = shape.opacity != null ? shape.opacity : 1;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = (isSelected || isMulti) ? '#ff6b35' : (shape.borderColor || '#2c3e50');
+      ctx.lineWidth = (isSelected || isMulti) ? 2.5 : (shape.borderWidth || 1);
+      ctx.stroke();
+
+      // Label
+      if (shape.label) {
+        const fs = (shape.fontSize || 12) * state.zoom;
+        ctx.font = `${Math.max(8, fs)}px "Segoe UI", "Meiryo", sans-serif`;
+        ctx.fillStyle = shape.fontColor || '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(shape.label, 0, 0);
+      }
+
+      ctx.restore();
+
+      // Resize handles (drawn in screen space, not rotated)
+      if (isSelected) {
+        const corners = getShapeCorners(shape);
+        const hs = 6;
+        ctx.fillStyle = '#ff6b35';
+        corners.forEach(c => {
+          ctx.fillRect(c.x - hs / 2, c.y - hs / 2, hs, hs);
+        });
+        // Rotation handle
+        const topCenter = worldToScreen(
+          cx + Math.sin(rot) * (shape.h / 2 + 25),
+          cy - Math.cos(rot) * (shape.h / 2 + 25)
+        );
+        ctx.beginPath();
+        ctx.arc(topCenter.x, topCenter.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#22c55e';
+        ctx.fill();
+        ctx.strokeStyle = '#166534';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // Connector line to shape
+        const topEdge = worldToScreen(
+          cx + Math.sin(rot) * (shape.h / 2),
+          cy - Math.cos(rot) * (shape.h / 2)
+        );
+        ctx.beginPath();
+        ctx.moveTo(topEdge.x, topEdge.y);
+        ctx.lineTo(topCenter.x, topCenter.y);
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    });
+  }
+
+  function getShapeCorners(shape) {
+    const cx = shape.x + shape.w / 2;
+    const cy = shape.y + shape.h / 2;
+    const hw = shape.w / 2, hh = shape.h / 2;
+    const rot = shape.rotation || 0;
+    const cos = Math.cos(rot), sin = Math.sin(rot);
+    const offsets = [
+      { dx: -hw, dy: -hh }, { dx: hw, dy: -hh },
+      { dx: hw, dy: hh }, { dx: -hw, dy: hh },
+      { dx: 0, dy: -hh }, { dx: hw, dy: 0 },
+      { dx: 0, dy: hh }, { dx: -hw, dy: 0 },
+    ];
+    return offsets.map(o => {
+      const rx = o.dx * cos - o.dy * sin + cx;
+      const ry = o.dx * sin + o.dy * cos + cy;
+      return worldToScreen(rx, ry);
+    });
+  }
+
+  function hitTestShape(sx, sy) {
+    const w = screenToWorld(sx, sy);
+    for (let i = state.shapes.length - 1; i >= 0; i--) {
+      const shape = state.shapes[i];
+      if (!isOnVisibleLayer(shape)) continue;
+      // Transform point into shape's local space (unrotate)
+      const cx = shape.x + shape.w / 2;
+      const cy = shape.y + shape.h / 2;
+      const rot = -(shape.rotation || 0);
+      const dx = w.x - cx, dy = w.y - cy;
+      const lx = dx * Math.cos(rot) - dy * Math.sin(rot);
+      const ly = dx * Math.sin(rot) + dy * Math.cos(rot);
+      if (Math.abs(lx) <= shape.w / 2 && Math.abs(ly) <= shape.h / 2) {
+        return shape;
+      }
+    }
+    return null;
+  }
+
+  function hitTestShapeResize(sx, sy) {
+    if (state.selectedType !== 'shape') return null;
+    const shape = state.shapes.find(s => s.id === state.selectedId);
+    if (!shape) return null;
+    const corners = getShapeCorners(shape);
+    const dirs = ['nw', 'ne', 'se', 'sw', 'n', 'e', 's', 'w'];
+    const tol = 10;
+    for (let i = 0; i < corners.length; i++) {
+      if (Math.abs(sx - corners[i].x) < tol && Math.abs(sy - corners[i].y) < tol) {
+        return { shape, dir: dirs[i] };
+      }
+    }
+    return null;
+  }
+
+  function hitTestShapeRotation(sx, sy) {
+    if (state.selectedType !== 'shape') return null;
+    const shape = state.shapes.find(s => s.id === state.selectedId);
+    if (!shape) return null;
+    const cx = shape.x + shape.w / 2;
+    const cy = shape.y + shape.h / 2;
+    const rot = shape.rotation || 0;
+    const handleWorld = {
+      x: cx + Math.sin(rot) * (shape.h / 2 + 25),
+      y: cy - Math.cos(rot) * (shape.h / 2 + 25),
+    };
+    const handleScreen = worldToScreen(handleWorld.x, handleWorld.y);
+    if (Math.abs(sx - handleScreen.x) < 12 && Math.abs(sy - handleScreen.y) < 12) {
+      return shape;
+    }
+    return null;
+  }
+
+  function createShape(config) {
+    const shape = {
+      id: state.nextId++,
+      type: config.type || 'rect',
+      x: config.x || 0,
+      y: config.y || 0,
+      w: config.w || 120,
+      h: config.h || 80,
+      rotation: 0,
+      color: config.color || '#4a90d9',
+      borderColor: '#2c3e50',
+      borderWidth: 1,
+      opacity: 1,
+      label: '',
+      fontSize: 12,
+      fontColor: '#ffffff',
+      layerId: state.activeLayerId,
+    };
+    pushUndo();
+    state.shapes.push(shape);
+    selectItem('shape', shape.id);
+    saveState();
+    render();
+    return shape;
   }
 
   // ===== Timeline Grid Drawing =====
@@ -2448,6 +2801,7 @@
       textAnnotations: state.textAnnotations,
       scheduleBars: state.scheduleBars,
       timelines: state.timelines,
+      shapes: state.shapes,
       nextId: state.nextId,
     }));
   }
@@ -2672,10 +3026,11 @@
     state.textAnnotations = snap.textAnnotations || [];
     state.scheduleBars = snap.scheduleBars || [];
     state.timelines = snap.timelines || [];
+    state.shapes = snap.shapes || [];
     state.nextId = snap.nextId;
     state.persons.forEach(migrateResource);
     clearSelection();
-    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
     renderPersonList();
     saveState();
     render();
@@ -3220,7 +3575,7 @@
         const connector = hitTestConnector(pos.x, pos.y);
         if (connector) {
           selectItem('connector', connector.id);
-          state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+          state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
           showConnectorContextMenu(e.clientX, e.clientY, connector);
           return;
         }
@@ -3299,7 +3654,7 @@
           }
         }
         selectItem('person', person.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
         pushUndo();
         state.dragging = {
           type: 'person',
@@ -3335,7 +3690,7 @@
           return;
         }
         selectItem('region', region.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
         const s = worldToScreen(region.x, region.y);
         const childPersonIds = state.persons.filter(p =>
           p.x >= region.x && p.x <= region.x + region.w &&
@@ -3436,7 +3791,7 @@
           return;
         }
         selectItem('text', textAnn.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
         pushUndo();
         state.dragging = {
           type: 'text',
@@ -3471,7 +3826,7 @@
           return;
         }
         selectItem('connector', connector.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
         if (connector.freeForm) {
           const endpoint = hitTestFreeFormEndpoint(pos.x, pos.y, connector);
           pushUndo();
@@ -3538,7 +3893,7 @@
           return;
         }
         selectItem('scheduleBar', schedBar.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
         pushUndo();
         state.dragging = {
           type: 'scheduleBar',
@@ -3572,7 +3927,7 @@
       const tlHit = hitTestTimeline(pos.x, pos.y);
       if (tlHit) {
         selectItem('timeline', tlHit.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
         pushUndo();
         state.dragging = {
           type: 'timeline',
@@ -3585,7 +3940,7 @@
 
       // Empty space left drag -> range selection
       clearSelection();
-      state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+      state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
       state.rangeSelect = {
         startX: pos.x,
         startY: pos.y,
@@ -5206,6 +5561,7 @@
           textAnnotations: JSON.parse(JSON.stringify(state.textAnnotations)),
           scheduleBars: JSON.parse(JSON.stringify(state.scheduleBars)),
           timelines: JSON.parse(JSON.stringify(state.timelines)),
+          shapes: JSON.parse(JSON.stringify(state.shapes)),
           layers: JSON.parse(JSON.stringify(state.layers)),
           activeLayerId: state.activeLayerId,
           canvasOffset: { ...state.canvasOffset },
@@ -5221,6 +5577,7 @@
       textAnnotations: state.textAnnotations,
       scheduleBars: state.scheduleBars,
       timelines: state.timelines,
+      shapes: state.shapes,
       layers: state.layers,
       tabs: state.tabs,
       activeTabId: state.activeTabId,
@@ -5244,6 +5601,7 @@
         state.textAnnotations = data.textAnnotations || [];
         state.scheduleBars = data.scheduleBars || [];
         state.timelines = data.timelines || [];
+        state.shapes = data.shapes || [];
         state.nextId = data.nextId || 1;
         if (data.layers && data.layers.length > 0) {
           state.layers = data.layers;
@@ -5900,6 +6258,7 @@
       textAnnotations: JSON.parse(JSON.stringify(state.textAnnotations)),
       scheduleBars: JSON.parse(JSON.stringify(state.scheduleBars)),
       timelines: JSON.parse(JSON.stringify(state.timelines)),
+      shapes: JSON.parse(JSON.stringify(state.shapes)),
       layers: JSON.parse(JSON.stringify(state.layers)),
       activeLayerId: state.activeLayerId,
       canvasOffset: { ...state.canvasOffset },
@@ -5914,13 +6273,14 @@
     state.textAnnotations = tabData.textAnnotations || [];
     state.scheduleBars = tabData.scheduleBars || [];
     state.timelines = tabData.timelines || [];
+    state.shapes = tabData.shapes || [];
     state.layers = tabData.layers || [{ id: 1, name: 'メイン', visible: true, locked: false }];
     state.activeLayerId = tabData.activeLayerId || (state.layers[0] ? state.layers[0].id : 1);
     state.canvasOffset = tabData.canvasOffset || { x: 0, y: 0 };
     state.zoom = tabData.zoom || 1.0;
     state.persons.forEach(p => { if (!p.roleIds) p.roleIds = []; });
     clearSelection();
-    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
     updateZoomLabel();
     renderPersonList();
     renderLayerList();
