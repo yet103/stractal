@@ -571,12 +571,14 @@
 
       // Selection resize handles
       if (isSelected) {
-        const handleSize = 6;
+        const hs = 7;
         ctx.fillStyle = '#ff6b35';
-        // Bottom-right corner (for row count adjustment)
-        ctx.fillRect(origin.x + totalW - handleSize/2, origin.y + totalH - handleSize/2, handleSize, handleSize);
-        // Right edge (for month count)
-        ctx.fillRect(origin.x + totalW - handleSize/2, origin.y + headerH + (rowH * rowCount)/2 - handleSize/2, handleSize, handleSize);
+        // Right-mid handle (drag to change month width / count)
+        ctx.fillRect(origin.x + totalW - hs/2, origin.y + headerH + (rowH * rowCount)/2 - hs/2, hs, hs);
+        // Bottom-mid handle (drag to change row count)
+        ctx.fillRect(origin.x + totalW/2 - hs/2, origin.y + totalH - hs/2, hs, hs);
+        // Bottom-right corner handle (drag both)
+        ctx.fillRect(origin.x + totalW - hs/2, origin.y + totalH - hs/2, hs, hs);
       }
     });
   }
@@ -590,6 +592,41 @@
       if (w.x >= tl.x && w.x <= tl.x + totalW && w.y >= tl.y && w.y <= tl.y + totalH) {
         return tl;
       }
+    }
+    return null;
+  }
+
+  function hitTestTimelineResize(sx, sy) {
+    if (state.selectedType !== 'timeline') return null;
+    const tl = state.timelines.find(t => t.id === state.selectedId);
+    if (!tl) return null;
+    const mw = tl.monthWidth || 80;
+    const mc = tl.monthCount || 12;
+    const rh = tl.rowHeight || 30;
+    const rc = tl.rowCount || 5;
+    const hh = tl.headerHeight || 50;
+    const totalW = mw * mc;
+    const totalH = hh + rh * rc;
+
+    const origin = worldToScreen(tl.x, tl.y);
+    const tol = 12;
+
+    const rightEdge = origin.x + totalW * state.zoom;
+    const bottomEdge = origin.y + totalH * state.zoom;
+    const midY = origin.y + (hh + rh * rc / 2) * state.zoom;
+    const midX = origin.x + (totalW / 2) * state.zoom;
+
+    // Bottom-right corner
+    if (Math.abs(sx - rightEdge) < tol && Math.abs(sy - bottomEdge) < tol) {
+      return { tl, dir: 'bottom-right' };
+    }
+    // Right edge
+    if (Math.abs(sx - rightEdge) < tol && sy > origin.y && sy < bottomEdge) {
+      return { tl, dir: 'right' };
+    }
+    // Bottom edge
+    if (Math.abs(sy - bottomEdge) < tol && sx > origin.x && sx < rightEdge) {
+      return { tl, dir: 'bottom' };
     }
     return null;
   }
@@ -3514,7 +3551,25 @@
         return;
       }
 
-      // Check for timeline click
+      // Check for timeline resize (edges)
+      const tlResize = hitTestTimelineResize(pos.x, pos.y);
+      if (tlResize) {
+        pushUndo();
+        state.dragging = {
+          type: 'timeline-resize',
+          id: tlResize.tl.id,
+          dir: tlResize.dir,
+          startWorld: screenToWorld(pos.x, pos.y),
+          origMonthCount: tlResize.tl.monthCount || 12,
+          origMonthWidth: tlResize.tl.monthWidth || 80,
+          origRowCount: tlResize.tl.rowCount || 5,
+        };
+        container.style.cursor = tlResize.dir === 'right' ? 'ew-resize' :
+                                  tlResize.dir === 'bottom' ? 'ns-resize' : 'nwse-resize';
+        return;
+      }
+
+      // Check for timeline click (move)
       const tlHit = hitTestTimeline(pos.x, pos.y);
       if (tlHit) {
         selectItem('timeline', tlHit.id);
@@ -3795,6 +3850,29 @@
           state.dragging.lastWorld = world;
           render();
         }
+      } else if (state.dragging.type === 'timeline-resize') {
+        const tl = state.timelines.find(t => t.id === state.dragging.id);
+        if (tl) {
+          const world = screenToWorld(pos.x, pos.y);
+          const dx = world.x - state.dragging.startWorld.x;
+          const dy = world.y - state.dragging.startWorld.y;
+          const mw = state.dragging.origMonthWidth;
+
+          if (state.dragging.dir === 'right' || state.dragging.dir === 'bottom-right') {
+            // Snap to whole months: total width = origMonthCount * mw + dx
+            const newTotalW = state.dragging.origMonthCount * mw + dx;
+            const newMonthCount = Math.max(3, Math.round(newTotalW / mw));
+            tl.monthCount = newMonthCount;
+          }
+          if (state.dragging.dir === 'bottom' || state.dragging.dir === 'bottom-right') {
+            const rh = tl.rowHeight || 30;
+            const newTotalH = state.dragging.origRowCount * rh + dy;
+            const newRowCount = Math.max(1, Math.round(newTotalH / rh));
+            tl.rowCount = newRowCount;
+          }
+          updatePropsPanel();
+          render();
+        }
       }
       return;
     }
@@ -3833,7 +3911,13 @@
       const connectorLine = hitTestConnector(pos.x, pos.y);
       const schedBar = hitTestScheduleBar(pos.x, pos.y);
       const sbResizeCheck = hitTestScheduleBarResize(pos.x, pos.y);
-      container.style.cursor = sbResizeCheck ? 'ew-resize' : (wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (schedBar ? 'grab' : (connectorLine ? 'pointer' : 'default')))))));
+      const tlResizeCheck = hitTestTimelineResize(pos.x, pos.y);
+      if (tlResizeCheck) {
+        container.style.cursor = tlResizeCheck.dir === 'right' ? 'ew-resize' :
+                                  tlResizeCheck.dir === 'bottom' ? 'ns-resize' : 'nwse-resize';
+      } else {
+        container.style.cursor = sbResizeCheck ? 'ew-resize' : (wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (schedBar ? 'grab' : (connectorLine ? 'pointer' : 'default')))))));
+      }
     } else if (state.tool === 'region' || state.tool === 'scheduleBar') {
       container.style.cursor = 'crosshair';
     } else if (state.tool === 'connector') {
