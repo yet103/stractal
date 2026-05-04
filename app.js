@@ -5079,7 +5079,7 @@
   function updateShapeButton() {
     if (!btnToolShape) return;
     const currentShape = SHAPE_TYPES.find(st => st.type === state.activeShapeType) || SHAPE_TYPES[0];
-    btnToolShape.innerHTML = `<span class="shape-icon">${currentShape.icon}</span> ${currentShape.label}`;
+    btnToolShape.innerHTML = `<span class="shape-icon">${currentShape.icon}</span> ${currentShape.label} <span style="font-size:0.8em; margin-left:4px; opacity:0.6;">▼</span>`;
   }
 
   if (shapePalette && btnToolShape) {
@@ -5106,11 +5106,11 @@
 
     btnToolShape.addEventListener('click', () => {
       if (state.tool === 'shape') {
-        // Toggle palette
+        // Toggle palette if already active
         shapePalette.style.display = shapePalette.style.display === 'none' ? 'grid' : 'none';
       } else {
         setToolActive('shape');
-        shapePalette.style.display = 'grid'; // Always open palette when switching to shape tool
+        shapePalette.style.display = 'none'; // Do not force open on initial switch
       }
     });
 
@@ -7114,6 +7114,16 @@ ${els.join('\n')}
     const menuToggleProperty = document.getElementById('menu-toggle-property');
     if (menuToggleProperty) {
       menuToggleProperty.addEventListener('click', () => togglePanel(sidebarRight));
+    }
+
+    // Toolbar panel toggles
+    const btnToggleSidebarTb = document.getElementById('btn-toggle-sidebar-tb');
+    if (btnToggleSidebarTb) {
+      btnToggleSidebarTb.addEventListener('click', () => togglePanel(sidebarLeft));
+    }
+    const btnTogglePropertyTb = document.getElementById('btn-toggle-property-tb');
+    if (btnTogglePropertyTb) {
+      btnTogglePropertyTb.addEventListener('click', () => togglePanel(sidebarRight));
     }
 
     // Close buttons
