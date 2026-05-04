@@ -104,6 +104,8 @@
             <div class="menu-divider"></div>
             <button class="menu-action" id="menu-plan-table">📊 リソース計画テーブル</button>
             <button class="menu-action" id="menu-dashboard">📈 ダッシュボード</button>
+            <div class="menu-divider"></div>
+            <button class="menu-action" id="menu-create-timeline">📅 タイムライン作成</button>
           </div>
         </div>
       </div>
@@ -386,6 +388,46 @@
             <input type="number" class="prop-input" id="prop-bar-height" value="30" min="10">
           </div>
         </div>
+        <div id="timeline-props" style="display:none;">
+          <div class="prop-group">
+            <div class="prop-label">開始年</div>
+            <input type="number" class="prop-input" id="prop-tl-startYear" value="2026" min="2020" max="2040">
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">開始月</div>
+            <select class="prop-input" id="prop-tl-startMonth">
+              <option value="1">1月</option>
+              <option value="2">2月</option>
+              <option value="3">3月</option>
+              <option value="4" selected>4月</option>
+              <option value="5">5月</option>
+              <option value="6">6月</option>
+              <option value="7">7月</option>
+              <option value="8">8月</option>
+              <option value="9">9月</option>
+              <option value="10">10月</option>
+              <option value="11">11月</option>
+              <option value="12">12月</option>
+            </select>
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">月数</div>
+            <input type="number" class="prop-input" id="prop-tl-monthCount" value="12" min="3" max="60">
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">月幅(px)</div>
+            <input type="number" class="prop-input" id="prop-tl-monthWidth" value="80" min="30" max="200">
+          </div>
+          <hr class="prop-separator">
+          <div class="prop-group">
+            <div class="prop-label">行数</div>
+            <input type="number" class="prop-input" id="prop-tl-rowCount" value="5" min="1" max="30">
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">行高(px)</div>
+            <input type="number" class="prop-input" id="prop-tl-rowHeight" value="30" min="15" max="80">
+          </div>
+        </div>
         <div id="layer-assign-props" style="display:none;">
           <hr class="prop-separator">
           <div class="prop-group">
@@ -395,6 +437,38 @@
         </div>
       </div>
     </aside>
+  </div>
+
+  <!-- Timeline Create Modal -->
+  <div id="timeline-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <h3>📅 タイムライン作成</h3>
+      <div class="prop-group">
+        <div class="prop-label">開始年</div>
+        <input type="number" class="prop-input" id="tl-modal-startYear" value="2026" min="2020" max="2040">
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">開始月</div>
+        <select class="prop-input" id="tl-modal-startMonth">
+          <option value="1">1月</option><option value="2">2月</option><option value="3">3月</option>
+          <option value="4" selected>4月</option><option value="5">5月</option><option value="6">6月</option>
+          <option value="7">7月</option><option value="8">8月</option><option value="9">9月</option>
+          <option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
+        </select>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">期間（月数）</div>
+        <input type="number" class="prop-input" id="tl-modal-monthCount" value="12" min="3" max="60">
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">行数</div>
+        <input type="number" class="prop-input" id="tl-modal-rowCount" value="5" min="1" max="30">
+      </div>
+      <div style="text-align:right; margin-top:12px;">
+        <button class="btn" id="tl-modal-cancel">キャンセル</button>
+        <button class="btn" id="tl-modal-create" style="background:#4a8acf;color:#fff;margin-left:6px;">作成</button>
+      </div>
+    </div>
   </div>
 
   <!-- Bulk Create Modal -->

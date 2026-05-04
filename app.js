@@ -10,6 +10,7 @@
     connectors: [],
     textAnnotations: [],
     scheduleBars: [],
+    timelines: [],
     layers: [{ id: 1, name: 'メイン', visible: true, locked: false }],
     activeLayerId: 1,
     tabs: [],
@@ -222,6 +223,7 @@
     const h = canvas.height / (window.devicePixelRatio || 1);
     ctx.clearRect(0, 0, w, h);
     drawGrid(w, h);
+    drawTimelines();
     drawConnectors();
     drawRegions();
     drawRegionPreview();
@@ -425,6 +427,194 @@
     // Bottom-right corner
     if (Math.abs(sx - e.x) < handleSize && Math.abs(sy - e.y) < handleSize) return 'bottom-right';
     return null;
+  }
+
+  // ===== Timeline Grid Drawing =====
+  const MONTH_NAMES_JA = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const QUARTER_COLORS = ['#e3f2fd','#e8f5e9','#fff3e0','#fce4ec']; // Q1-Q4 background
+
+  function drawTimelines() {
+    state.timelines.forEach(tl => {
+      if (!isOnVisibleLayer(tl)) return;
+      const isSelected = (state.selectedType === 'timeline' && state.selectedId === tl.id);
+
+      const startYear = tl.startYear || 2026;
+      const startMonth = tl.startMonth || 4; // 1-based
+      const monthCount = tl.monthCount || 12;
+      const monthW = (tl.monthWidth || 80) * state.zoom;
+      const rowH = (tl.rowHeight || 30) * state.zoom;
+      const rowCount = tl.rowCount || 5;
+      const headerH = (tl.headerHeight || 50) * state.zoom;
+
+      const origin = worldToScreen(tl.x, tl.y);
+      const totalW = monthW * monthCount;
+      const totalH = headerH + rowH * rowCount;
+
+      ctx.save();
+
+      // Background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(origin.x, origin.y, totalW, totalH);
+
+      // Quarter background bands
+      for (let m = 0; m < monthCount; m++) {
+        const absMonth = startMonth + m;
+        const q = Math.floor(((absMonth - 1) % 12) / 3);
+        ctx.fillStyle = QUARTER_COLORS[q] + '60'; // semi-transparent
+        ctx.fillRect(origin.x + m * monthW, origin.y + headerH, monthW, rowH * rowCount);
+      }
+
+      // Year headers
+      ctx.fillStyle = '#2c3e50';
+      ctx.font = `bold ${Math.max(10, 13 * state.zoom)}px "Segoe UI", "Meiryo", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      let curYear = startYear;
+      let yearStart = 0;
+      for (let m = 0; m <= monthCount; m++) {
+        const absMonth = startMonth + m;
+        const yr = startYear + Math.floor((absMonth - 1) / 12);
+        if (yr !== curYear || m === monthCount) {
+          // Draw year label for curYear spanning yearStart to m
+          const x1 = origin.x + yearStart * monthW;
+          const x2 = origin.x + m * monthW;
+          // Year header band
+          ctx.fillStyle = '#34495e';
+          ctx.fillRect(x1, origin.y, x2 - x1, headerH * 0.45);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(`${curYear}年`, (x1 + x2) / 2, origin.y + headerH * 0.22);
+          curYear = yr;
+          yearStart = m;
+        }
+      }
+
+      // Month headers
+      ctx.font = `${Math.max(9, 11 * state.zoom)}px "Segoe UI", "Meiryo", sans-serif`;
+      for (let m = 0; m < monthCount; m++) {
+        const absMonth = startMonth + m;
+        const displayMonth = ((absMonth - 1) % 12) + 1;
+        const mx = origin.x + m * monthW;
+
+        // Month header cell
+        const q = Math.floor((displayMonth - 1) / 3);
+        ctx.fillStyle = QUARTER_COLORS[q] + 'a0';
+        ctx.fillRect(mx, origin.y + headerH * 0.45, monthW, headerH * 0.55);
+
+        // Month name
+        ctx.fillStyle = '#2c3e50';
+        ctx.textAlign = 'center';
+        ctx.fillText(MONTH_NAMES_JA[displayMonth - 1], mx + monthW / 2, origin.y + headerH * 0.72);
+      }
+
+      // Vertical grid lines
+      for (let m = 0; m <= monthCount; m++) {
+        const absMonth = startMonth + m;
+        const displayMonth = ((absMonth - 1) % 12) + 1;
+        const lx = origin.x + m * monthW;
+
+        if (displayMonth === 1 || m === 0) {
+          // Year boundary: thick solid
+          ctx.strokeStyle = '#2c3e50';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([]);
+        } else if (displayMonth === 4 || displayMonth === 7 || displayMonth === 10) {
+          // Quarter boundary: medium solid
+          ctx.strokeStyle = '#7f8c8d';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([]);
+        } else {
+          // Month boundary: thin dashed
+          ctx.strokeStyle = '#bdc3c7';
+          ctx.lineWidth = 0.5;
+          ctx.setLineDash([4, 4]);
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(lx, origin.y + headerH);
+        ctx.lineTo(lx, origin.y + totalH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Horizontal row lines
+      ctx.strokeStyle = '#ddd';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([]);
+      for (let r = 0; r <= rowCount; r++) {
+        const ry = origin.y + headerH + r * rowH;
+        ctx.beginPath();
+        ctx.moveTo(origin.x, ry);
+        ctx.lineTo(origin.x + totalW, ry);
+        ctx.stroke();
+      }
+
+      // Outer border
+      ctx.strokeStyle = isSelected ? '#ff6b35' : '#34495e';
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
+      ctx.setLineDash([]);
+      ctx.strokeRect(origin.x, origin.y, totalW, totalH);
+
+      // Row labels (left side)
+      if (tl.rowLabels && tl.rowLabels.length > 0) {
+        ctx.font = `${Math.max(9, 11 * state.zoom)}px "Segoe UI", "Meiryo", sans-serif`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#2c3e50';
+        tl.rowLabels.forEach((label, i) => {
+          if (i < rowCount && label) {
+            ctx.fillText(label, origin.x - 5, origin.y + headerH + i * rowH + rowH / 2);
+          }
+        });
+      }
+
+      ctx.restore();
+
+      // Selection resize handles
+      if (isSelected) {
+        const handleSize = 6;
+        ctx.fillStyle = '#ff6b35';
+        // Bottom-right corner (for row count adjustment)
+        ctx.fillRect(origin.x + totalW - handleSize/2, origin.y + totalH - handleSize/2, handleSize, handleSize);
+        // Right edge (for month count)
+        ctx.fillRect(origin.x + totalW - handleSize/2, origin.y + headerH + (rowH * rowCount)/2 - handleSize/2, handleSize, handleSize);
+      }
+    });
+  }
+
+  function hitTestTimeline(sx, sy) {
+    const w = screenToWorld(sx, sy);
+    for (let i = state.timelines.length - 1; i >= 0; i--) {
+      const tl = state.timelines[i];
+      const totalW = (tl.monthWidth || 80) * (tl.monthCount || 12);
+      const totalH = (tl.headerHeight || 50) + (tl.rowHeight || 30) * (tl.rowCount || 5);
+      if (w.x >= tl.x && w.x <= tl.x + totalW && w.y >= tl.y && w.y <= tl.y + totalH) {
+        return tl;
+      }
+    }
+    return null;
+  }
+
+  function createTimeline(config) {
+    const tl = {
+      id: state.nextId++,
+      x: config.x || 100,
+      y: config.y || 100,
+      startYear: config.startYear || new Date().getFullYear(),
+      startMonth: config.startMonth || 4,
+      monthCount: config.monthCount || 12,
+      monthWidth: config.monthWidth || 80,
+      rowHeight: config.rowHeight || 30,
+      rowCount: config.rowCount || 5,
+      headerHeight: config.headerHeight || 50,
+      rowLabels: config.rowLabels || [],
+      layerId: state.activeLayerId,
+    };
+    pushUndo();
+    state.timelines.push(tl);
+    selectItem('timeline', tl.id);
+    saveState();
+    render();
+    return tl;
   }
 
   // ===== Connector Helpers =====
@@ -2223,6 +2413,7 @@
       connectors: state.connectors,
       textAnnotations: state.textAnnotations,
       scheduleBars: state.scheduleBars,
+      timelines: state.timelines,
       nextId: state.nextId,
     }));
   }
@@ -2446,6 +2637,7 @@
     state.connectors = snap.connectors || [];
     state.textAnnotations = snap.textAnnotations || [];
     state.scheduleBars = snap.scheduleBars || [];
+    state.timelines = snap.timelines || [];
     state.nextId = snap.nextId;
     state.persons.forEach(migrateResource);
     clearSelection();
@@ -2551,6 +2743,7 @@
       if (state.selectedType === 'connector') return state.connectors.find(c => c.id === state.selectedId);
       if (state.selectedType === 'text') return state.textAnnotations.find(t => t.id === state.selectedId);
       if (state.selectedType === 'scheduleBar') return state.scheduleBars.find(b => b.id === state.selectedId);
+      if (state.selectedType === 'timeline') return state.timelines.find(t => t.id === state.selectedId);
       return null;
     }
     noSelectionMsg.style.display = 'none';
@@ -2562,6 +2755,8 @@
     if (textProps) textProps.style.display = 'none';
     const schedBarPropsEl = document.getElementById('scheduleBar-props');
     if (schedBarPropsEl) schedBarPropsEl.style.display = 'none';
+    const timelinePropsEl = document.getElementById('timeline-props');
+    if (timelinePropsEl) timelinePropsEl.style.display = 'none';
 
     if (state.selectedType === 'person') {
       const p = state.persons.find(p => p.id === state.selectedId);
@@ -2653,6 +2848,22 @@
         if (propBarTip) propBarTip.value = bar.tipShape || 'chevron';
         if (propBarW) propBarW.value = Math.round(bar.w);
         if (propBarH) propBarH.value = Math.round(bar.h);
+      }
+    } else if (state.selectedType === 'timeline') {
+      const tl = state.timelines.find(t => t.id === state.selectedId);
+      if (!tl) return;
+      const el = document.getElementById('timeline-props');
+      if (el) {
+        el.style.display = 'block';
+        const sr = document.getElementById('sidebar-right');
+        if (sr && sr.style.display === 'none') sr.style.display = 'flex';
+        const f = (id) => document.getElementById(id);
+        if (f('prop-tl-startYear')) f('prop-tl-startYear').value = tl.startYear || 2026;
+        if (f('prop-tl-startMonth')) f('prop-tl-startMonth').value = tl.startMonth || 4;
+        if (f('prop-tl-monthCount')) f('prop-tl-monthCount').value = tl.monthCount || 12;
+        if (f('prop-tl-monthWidth')) f('prop-tl-monthWidth').value = tl.monthWidth || 80;
+        if (f('prop-tl-rowCount')) f('prop-tl-rowCount').value = tl.rowCount || 5;
+        if (f('prop-tl-rowHeight')) f('prop-tl-rowHeight').value = tl.rowHeight || 30;
       }
     } else if (state.multiSelection.personIds.length > 0) {
       // Multi-selection: show color picker for batch color change
@@ -3303,6 +3514,21 @@
         return;
       }
 
+      // Check for timeline click
+      const tlHit = hitTestTimeline(pos.x, pos.y);
+      if (tlHit) {
+        selectItem('timeline', tlHit.id);
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+        pushUndo();
+        state.dragging = {
+          type: 'timeline',
+          id: tlHit.id,
+          lastWorld: screenToWorld(pos.x, pos.y),
+        };
+        container.style.cursor = 'grabbing';
+        return;
+      }
+
       // Empty space left drag -> range selection
       clearSelection();
       state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
@@ -3557,6 +3783,17 @@
             bar.w = Math.max(MIN_W, state.dragging.origW + dx);
             bar.h = Math.max(MIN_H, state.dragging.origH + dy);
           }
+          render();
+        }
+      } else if (state.dragging.type === 'timeline') {
+        const tl = state.timelines.find(t => t.id === state.dragging.id);
+        if (tl) {
+          const world = screenToWorld(pos.x, pos.y);
+          const dx = world.x - state.dragging.lastWorld.x;
+          const dy = world.y - state.dragging.lastWorld.y;
+          tl.x += dx;
+          tl.y += dy;
+          state.dragging.lastWorld = world;
           render();
         }
       }
@@ -4215,6 +4452,12 @@
     } else if (state.selectedType === 'scheduleBar') {
       pushUndo();
       state.scheduleBars = state.scheduleBars.filter(b => b.id !== state.selectedId);
+      clearSelection();
+      saveState();
+      render();
+    } else if (state.selectedType === 'timeline') {
+      pushUndo();
+      state.timelines = state.timelines.filter(t => t.id !== state.selectedId);
       clearSelection();
       saveState();
       render();
@@ -4881,6 +5124,7 @@
           connectors: JSON.parse(JSON.stringify(state.connectors)),
           textAnnotations: JSON.parse(JSON.stringify(state.textAnnotations)),
           scheduleBars: JSON.parse(JSON.stringify(state.scheduleBars)),
+          timelines: JSON.parse(JSON.stringify(state.timelines)),
           layers: JSON.parse(JSON.stringify(state.layers)),
           activeLayerId: state.activeLayerId,
           canvasOffset: { ...state.canvasOffset },
@@ -4895,6 +5139,7 @@
       connectors: state.connectors,
       textAnnotations: state.textAnnotations,
       scheduleBars: state.scheduleBars,
+      timelines: state.timelines,
       layers: state.layers,
       tabs: state.tabs,
       activeTabId: state.activeTabId,
@@ -4917,6 +5162,7 @@
         state.connectors = data.connectors || [];
         state.textAnnotations = data.textAnnotations || [];
         state.scheduleBars = data.scheduleBars || [];
+        state.timelines = data.timelines || [];
         state.nextId = data.nextId || 1;
         if (data.layers && data.layers.length > 0) {
           state.layers = data.layers;
@@ -5067,6 +5313,68 @@
     });
   }
   setupScheduleBarPropListeners();
+
+  // ===== Timeline Creation =====
+  const menuCreateTimeline = document.getElementById('menu-create-timeline');
+  const timelineModal = document.getElementById('timeline-modal');
+  const tlModalCancel = document.getElementById('tl-modal-cancel');
+  const tlModalCreate = document.getElementById('tl-modal-create');
+
+  if (menuCreateTimeline) {
+    menuCreateTimeline.addEventListener('click', () => {
+      if (timelineModal) timelineModal.style.display = 'flex';
+    });
+  }
+  if (tlModalCancel) {
+    tlModalCancel.addEventListener('click', () => {
+      if (timelineModal) timelineModal.style.display = 'none';
+    });
+  }
+  if (tlModalCreate) {
+    tlModalCreate.addEventListener('click', () => {
+      const startYear = parseInt(document.getElementById('tl-modal-startYear').value) || 2026;
+      const startMonth = parseInt(document.getElementById('tl-modal-startMonth').value) || 4;
+      const monthCount = parseInt(document.getElementById('tl-modal-monthCount').value) || 12;
+      const rowCount = parseInt(document.getElementById('tl-modal-rowCount').value) || 5;
+
+      // Position at center of visible canvas area
+      const canvasCenterX = (canvas.width / (window.devicePixelRatio || 1)) / 2;
+      const canvasCenterY = (canvas.height / (window.devicePixelRatio || 1)) / 2;
+      const worldCenter = screenToWorld(canvasCenterX, canvasCenterY);
+
+      createTimeline({
+        x: worldCenter.x - (80 * monthCount) / 2,
+        y: worldCenter.y - 100,
+        startYear,
+        startMonth,
+        monthCount,
+        rowCount,
+      });
+
+      if (timelineModal) timelineModal.style.display = 'none';
+      setToolActive('select');
+    });
+  }
+
+  // Timeline property change listeners
+  function setupTimelinePropListeners() {
+    const fields = ['startYear', 'startMonth', 'monthCount', 'monthWidth', 'rowCount', 'rowHeight'];
+    fields.forEach(field => {
+      const el = document.getElementById('prop-tl-' + field);
+      if (el) {
+        el.addEventListener('change', () => {
+          if (state.selectedType !== 'timeline') return;
+          const tl = state.timelines.find(t => t.id === state.selectedId);
+          if (!tl) return;
+          pushUndo();
+          tl[field] = parseInt(el.value) || tl[field];
+          render();
+          saveState();
+        });
+      }
+    });
+  }
+  setupTimelinePropListeners();
 
   // Text annotation click on canvas
   canvas.addEventListener('click', (e) => {
@@ -5510,6 +5818,7 @@
       connectors: JSON.parse(JSON.stringify(state.connectors)),
       textAnnotations: JSON.parse(JSON.stringify(state.textAnnotations)),
       scheduleBars: JSON.parse(JSON.stringify(state.scheduleBars)),
+      timelines: JSON.parse(JSON.stringify(state.timelines)),
       layers: JSON.parse(JSON.stringify(state.layers)),
       activeLayerId: state.activeLayerId,
       canvasOffset: { ...state.canvasOffset },
@@ -5523,6 +5832,7 @@
     state.connectors = tabData.connectors || [];
     state.textAnnotations = tabData.textAnnotations || [];
     state.scheduleBars = tabData.scheduleBars || [];
+    state.timelines = tabData.timelines || [];
     state.layers = tabData.layers || [{ id: 1, name: 'メイン', visible: true, locked: false }];
     state.activeLayerId = tabData.activeLayerId || (state.layers[0] ? state.layers[0].id : 1);
     state.canvasOffset = tabData.canvasOffset || { x: 0, y: 0 };
