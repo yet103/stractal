@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Canvas-HTML5-E34F26?style=flat-square&logo=html5" alt="HTML5 Canvas">
   <img src="https://img.shields.io/badge/Server-不要-success?style=flat-square" alt="No Server">
   <img src="https://img.shields.io/badge/Theme-Light%20%2F%20Dark-8B5CF6?style=flat-square" alt="Dark Mode">
-  <img src="https://img.shields.io/badge/Version-v2.0.0-orange?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-v2.1.0-orange?style=flat-square" alt="Version">
 </p>
 
 ---
@@ -130,7 +130,7 @@ KPIカード・稼働率チャート・リージョン別コスト分析・ア�
 
 ### 💾 データ管理・エクスポート
 - JSON保存/読込、CSVインポート
-- PNG高解像度エクスポート
+- PNG / SVG 高解像度エクスポート
 - 共有URL、印刷対応（A3/A4）
 - localStorage自動保存
 - 🌙 ダークモード
@@ -218,12 +218,20 @@ stractal/
 
 | バージョン | リンク | 日付 |
 |:--|:--|:--|
-| **v2.0.0**（最新） | [📥 ZIPダウンロード](https://github.com/yet103/stractal/archive/refs/tags/v2.0.0.zip) | 2026-04-18 |
+| **v2.1.0**（最新） | [📥 ZIPダウンロード](https://github.com/yet103/stractal/archive/refs/tags/v2.1.0.zip) | 2026-05-04 |
+| **v2.0.0** | [ZIPダウンロード](https://github.com/yet103/stractal/archive/refs/tags/v2.0.0.zip) | 2026-04-18 |
 | 最新開発版 | [ZIPダウンロード（main）](https://github.com/yet103/stractal/archive/refs/heads/main.zip) | — |
 
 ---
 
 ## 📋 更新履歴
+
+### v2.1.0（2026-05-04）— SVGエクスポート・汎用図形・タイムライン
+- 🖼 **SVGエクスポート** — キャンバス全体をベクター画像（SVG）として高画質出力
+- ✏️ **汎用図形システム強化** — 15種類の図形、8方向リサイズ、15度スナップ回転、ダブルクリックでラベル編集
+- 📅 **タイムライン** — 計画テーブルとは独立した、自由に配置・リサイズできるカレンダーUI
+- 📊 **スケジュールバー** — タイムラインやガントチャートに配置できる5種類の帯（シェブロン、フラットなど）
+- 🎨 **UI統一** — ツールバーの整理、CSSデザイントークンの導入
 
 ### v2.0.0（2026-04-18）— Stractal リブランド
 - 🎨 **Stractal（Structure + Fractal）にリブランド**
