@@ -500,6 +500,48 @@ body {
   border-radius: 3px;
 }
 
+/* ===== Shape Palette ===== */
+.shape-palette {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 200;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-main);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  min-width: 200px;
+}
+.shape-palette-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 2px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  gap: 2px;
+  transition: background 0.15s;
+}
+.shape-palette-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-main);
+}
+.shape-palette-item.active {
+  background: #e3f2fd;
+  border-color: #4a8acf;
+}
+.shape-palette-item .shape-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
 /* ===== Modal ===== */
 .modal-overlay {
   display: none;

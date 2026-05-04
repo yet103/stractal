@@ -117,9 +117,13 @@
         <div class="toolbar-group" id="tg-tools">
           <button class="btn active" id="btn-tool-select" title="選択・移動">🖱 選択</button>
           <button class="btn" id="btn-tool-region" title="領域を描画">⬜ 領域</button>
-          <button class="btn" id="btn-tool-connector" title="図形描画 (Shift)">✏️ 図形描画</button>
+          <button class="btn" id="btn-tool-connector" title="接続線 (Shift)">✏️ 接続線</button>
           <button class="btn" id="btn-tool-text" title="テキスト注釈">📝 注釈</button>
           <button class="btn" id="btn-tool-scheduleBar" title="スケジュールバー">📅 スケジュール</button>
+          <div style="position:relative;display:inline-block;">
+            <button class="btn" id="btn-tool-shape" title="図形描画">🔶 図形</button>
+            <div id="shape-palette" class="shape-palette" style="display:none;"></div>
+          </div>
         </div>
         <div class="toolbar-group" id="tg-features">
           <button class="btn" id="btn-bulk-create" title="一括作成">📋 一括作成</button>

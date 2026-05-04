@@ -236,6 +236,7 @@
     drawConnectionPoints();
     drawRangeSelect();
     drawScheduleBarPreview();
+    drawShapePreview();
   }
 
   function drawTextAnnotations() {
@@ -780,6 +781,34 @@
     saveState();
     render();
     return shape;
+  }
+
+  function drawShapePreview() {
+    if (!state.shapeDraw) return;
+    const d = state.shapeDraw;
+    const x = Math.min(d.startX, d.currentX);
+    const y = Math.min(d.startY, d.currentY);
+    const w = Math.abs(d.currentX - d.startX);
+    const h = Math.abs(d.currentY - d.startY);
+    if (w < 2 && h < 2) return;
+
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const origin = worldToScreen(cx, cy);
+    const sw = w * state.zoom;
+    const sh = h * state.zoom;
+
+    ctx.save();
+    ctx.translate(origin.x, origin.y);
+    ctx.globalAlpha = 0.5;
+    buildShapePath(ctx, state.activeShapeType, sw, sh);
+    ctx.fillStyle = '#4a90d9';
+    ctx.fill();
+    ctx.strokeStyle = '#2c3e50';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // ===== Timeline Grid Drawing =====
@@ -3994,6 +4023,14 @@
         startX: world.x,
         startY: world.y,
       };
+    } else if (state.tool === 'shape') {
+      const world = screenToWorld(pos.x, pos.y);
+      state.shapeDraw = {
+        startX: world.x,
+        startY: world.y,
+        currentX: world.x,
+        currentY: world.y,
+      };
     }
   });
 
@@ -4249,6 +4286,14 @@
       return;
     }
 
+    if (state.shapeDraw) {
+      const world = screenToWorld(pos.x, pos.y);
+      state.shapeDraw.currentX = world.x;
+      state.shapeDraw.currentY = world.y;
+      render();
+      return;
+    }
+
     // Cursor hints
     if (state.tool === 'select') {
       const handle = hitTestResizeHandle(pos.x, pos.y);
@@ -4271,7 +4316,7 @@
       } else {
         container.style.cursor = sbResizeCheck ? 'ew-resize' : (wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (schedBar ? 'grab' : (connectorLine ? 'pointer' : 'default')))))));
       }
-    } else if (state.tool === 'region' || state.tool === 'scheduleBar') {
+    } else if (state.tool === 'region' || state.tool === 'scheduleBar' || state.tool === 'shape') {
       container.style.cursor = 'crosshair';
     } else if (state.tool === 'connector') {
       const cp = hitTestConnectionPoint(pos.x, pos.y);
@@ -4442,6 +4487,22 @@
         saveState();
       }
       state.scheduleBarDraw = null;
+      render();
+    }
+
+    if (state.shapeDraw) {
+      const d = state.shapeDraw;
+      const x = Math.min(d.startX, d.currentX);
+      const y = Math.min(d.startY, d.currentY);
+      const w = Math.abs(d.currentX - d.startX);
+      const h = Math.abs(d.currentY - d.startY);
+      if (w > 10 && h > 10) {
+        createShape({
+          type: state.activeShapeType,
+          x, y, w, h,
+        });
+      }
+      state.shapeDraw = null;
       render();
     }
   });
@@ -4817,7 +4878,14 @@
     if (btnToolText) btnToolText.classList.toggle('active', tool === 'text');
     const btnSB = document.getElementById('btn-tool-scheduleBar');
     if (btnSB) btnSB.classList.toggle('active', tool === 'scheduleBar');
+    const btnShape = document.getElementById('btn-tool-shape');
+    if (btnShape) btnShape.classList.toggle('active', tool === 'shape');
     container.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+    // Hide shape palette when switching away
+    if (tool !== 'shape') {
+      const pal = document.getElementById('shape-palette');
+      if (pal) pal.style.display = 'none';
+    }
     render();
   }
 
@@ -4827,6 +4895,47 @@
 
   if (btnToolConnector) {
     btnToolConnector.addEventListener('click', () => setToolActive('connector'));
+  }
+
+  // Shape tool setup
+  state.activeShapeType = 'rect';
+  const shapePalette = document.getElementById('shape-palette');
+  const btnToolShape = document.getElementById('btn-tool-shape');
+
+  if (shapePalette && btnToolShape) {
+    // Build palette items
+    SHAPE_TYPES.forEach(st => {
+      const item = document.createElement('div');
+      item.className = 'shape-palette-item' + (st.type === state.activeShapeType ? ' active' : '');
+      item.innerHTML = `<span class="shape-icon">${st.icon}</span><span>${st.label}</span>`;
+      item.dataset.type = st.type;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.activeShapeType = st.type;
+        shapePalette.querySelectorAll('.shape-palette-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+        setToolActive('shape');
+        shapePalette.style.display = 'none';
+      });
+      shapePalette.appendChild(item);
+    });
+
+    btnToolShape.addEventListener('click', () => {
+      if (state.tool === 'shape') {
+        // Toggle palette
+        shapePalette.style.display = shapePalette.style.display === 'none' ? 'grid' : 'none';
+      } else {
+        setToolActive('shape');
+        shapePalette.style.display = 'grid';
+      }
+    });
+
+    // Close palette on outside click
+    document.addEventListener('click', (e) => {
+      if (!btnToolShape.contains(e.target) && !shapePalette.contains(e.target)) {
+        shapePalette.style.display = 'none';
+      }
+    });
   }
 
   function deleteSelected() {
