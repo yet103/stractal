@@ -288,15 +288,14 @@ body {
 }
 
 #toolbar {
-  height: 38px;
+  min-height: 38px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 4px 8px;
   gap: 4px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  flex-wrap: wrap;
 }
 
 .toolbar-group {
