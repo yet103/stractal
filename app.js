@@ -5322,12 +5322,12 @@
 
   if (menuCreateTimeline) {
     menuCreateTimeline.addEventListener('click', () => {
-      if (timelineModal) timelineModal.style.display = 'flex';
+      if (timelineModal) timelineModal.classList.add('show');
     });
   }
   if (tlModalCancel) {
     tlModalCancel.addEventListener('click', () => {
-      if (timelineModal) timelineModal.style.display = 'none';
+      if (timelineModal) timelineModal.classList.remove('show');
     });
   }
   if (tlModalCreate) {
@@ -5351,7 +5351,7 @@
         rowCount,
       });
 
-      if (timelineModal) timelineModal.style.display = 'none';
+      if (timelineModal) timelineModal.classList.remove('show');
       setToolActive('select');
     });
   }
@@ -6074,6 +6074,15 @@
     proxyClick('menu-role-manage', 'btn-role-manage');
     proxyClick('menu-plan-table', 'btn-plan-table');
     proxyClick('menu-dashboard', 'btn-dashboard');
+
+    // Timeline creation
+    const menuTL = document.getElementById('menu-create-timeline');
+    if (menuTL) {
+      menuTL.addEventListener('click', () => {
+        const tlModal = document.getElementById('timeline-modal');
+        if (tlModal) tlModal.classList.add('show');
+      });
+    }
   }
 
   // ===== Dashboard (#22-#26) =====
