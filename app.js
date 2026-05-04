@@ -3175,6 +3175,8 @@
     if (schedBarPropsEl) schedBarPropsEl.style.display = 'none';
     const timelinePropsEl = document.getElementById('timeline-props');
     if (timelinePropsEl) timelinePropsEl.style.display = 'none';
+    const shapePropsEl = document.getElementById('shape-props');
+    if (shapePropsEl) shapePropsEl.style.display = 'none';
 
     if (state.selectedType === 'person') {
       const p = state.persons.find(p => p.id === state.selectedId);
@@ -3283,6 +3285,33 @@
         if (f('prop-tl-rowCount')) f('prop-tl-rowCount').value = tl.rowCount || 5;
         if (f('prop-tl-rowHeight')) f('prop-tl-rowHeight').value = tl.rowHeight || 30;
         if (f('prop-tl-fontSize')) f('prop-tl-fontSize').value = tl.fontSize || 11;
+      }
+    } else if (state.selectedType === 'shape') {
+      const shape = state.shapes.find(s => s.id === state.selectedId);
+      if (shape && shapePropsEl) {
+        shapePropsEl.style.display = 'block';
+        const f = id => document.getElementById(id);
+        // Populate shape type dropdown
+        const typeSelect = f('prop-shape-type');
+        if (typeSelect && typeSelect.options.length === 0) {
+          SHAPE_TYPES.forEach(st => {
+            const opt = document.createElement('option');
+            opt.value = st.type;
+            opt.textContent = st.icon + ' ' + st.label;
+            typeSelect.appendChild(opt);
+          });
+        }
+        if (typeSelect) typeSelect.value = shape.type;
+        if (f('prop-shape-color')) f('prop-shape-color').value = shape.color || '#4a90d9';
+        if (f('prop-shape-borderColor')) f('prop-shape-borderColor').value = shape.borderColor || '#2c3e50';
+        if (f('prop-shape-borderWidth')) f('prop-shape-borderWidth').value = shape.borderWidth ?? 1;
+        if (f('prop-shape-label')) f('prop-shape-label').value = shape.label || '';
+        if (f('prop-shape-fontSize')) f('prop-shape-fontSize').value = shape.fontSize || 12;
+        if (f('prop-shape-fontColor')) f('prop-shape-fontColor').value = shape.fontColor || '#ffffff';
+        if (f('prop-shape-rotation')) f('prop-shape-rotation').value = Math.round((shape.rotation || 0) * 180 / Math.PI);
+        if (f('prop-shape-opacity')) f('prop-shape-opacity').value = shape.opacity != null ? shape.opacity : 1;
+        if (f('prop-shape-w')) f('prop-shape-w').value = Math.round(shape.w);
+        if (f('prop-shape-h')) f('prop-shape-h').value = Math.round(shape.h);
       }
     } else if (state.multiSelection.personIds.length > 0) {
       // Multi-selection: show color picker for batch color change
@@ -3933,6 +3962,74 @@
         return;
       }
 
+      // Check for shape rotation handle
+      const shapeRot = hitTestShapeRotation(pos.x, pos.y);
+      if (shapeRot) {
+        pushUndo();
+        const cx = shapeRot.x + shapeRot.w / 2;
+        const cy = shapeRot.y + shapeRot.h / 2;
+        state.dragging = {
+          type: 'shape-rotate',
+          id: shapeRot.id,
+          centerWorld: { x: cx, y: cy },
+          startAngle: shapeRot.rotation || 0,
+        };
+        container.style.cursor = 'grabbing';
+        return;
+      }
+
+      // Check for shape resize handle
+      const shapeRes = hitTestShapeResize(pos.x, pos.y);
+      if (shapeRes) {
+        pushUndo();
+        state.dragging = {
+          type: 'shape-resize',
+          id: shapeRes.shape.id,
+          dir: shapeRes.dir,
+          startWorld: screenToWorld(pos.x, pos.y),
+          origX: shapeRes.shape.x,
+          origY: shapeRes.shape.y,
+          origW: shapeRes.shape.w,
+          origH: shapeRes.shape.h,
+          origRot: shapeRes.shape.rotation || 0,
+        };
+        container.style.cursor = 'nwse-resize';
+        return;
+      }
+
+      // Check for shape click (select / move)
+      const shapeHit = hitTestShape(pos.x, pos.y);
+      if (shapeHit) {
+        if (e.ctrlKey) {
+          const idx = (state.multiSelection.shapeIds || []).indexOf(shapeHit.id);
+          if (idx >= 0) {
+            state.multiSelection.shapeIds.splice(idx, 1);
+          } else {
+            state.multiSelection.shapeIds.push(shapeHit.id);
+          }
+          updatePropsPanel();
+          render();
+          return;
+        }
+        if ((state.multiSelection.shapeIds || []).includes(shapeHit.id)) {
+          pushUndo();
+          const startWorld = screenToWorld(pos.x, pos.y);
+          state.dragging = { type: 'multi', lastWorld: startWorld };
+          container.style.cursor = 'grabbing';
+          return;
+        }
+        selectItem('shape', shapeHit.id);
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
+        pushUndo();
+        state.dragging = {
+          type: 'shape',
+          id: shapeHit.id,
+          lastWorld: screenToWorld(pos.x, pos.y),
+        };
+        container.style.cursor = 'grabbing';
+        return;
+      }
+
       // Check for timeline resize (edges)
       const tlResize = hitTestTimelineResize(pos.x, pos.y);
       if (tlResize) {
@@ -4127,6 +4224,11 @@
           const b = state.scheduleBars.find(b => b.id === bid);
           if (b) { b.x += dx; b.y += dy; }
         });
+        // Move selected shapes
+        (state.multiSelection.shapeIds || []).forEach(sid => {
+          const s = state.shapes.find(s => s.id === sid);
+          if (s) { s.x += dx; s.y += dy; }
+        });
         state.dragging.lastWorld = world;
         render();
       } else if (state.dragging.type === 'pan') {
@@ -4230,6 +4332,52 @@
           }
           render();
         }
+      } else if (state.dragging.type === 'shape') {
+        const shape = state.shapes.find(s => s.id === state.dragging.id);
+        if (shape) {
+          const world = screenToWorld(pos.x, pos.y);
+          const dx = world.x - state.dragging.lastWorld.x;
+          const dy = world.y - state.dragging.lastWorld.y;
+          shape.x += dx;
+          shape.y += dy;
+          state.dragging.lastWorld = world;
+          render();
+        }
+      } else if (state.dragging.type === 'shape-resize') {
+        const shape = state.shapes.find(s => s.id === state.dragging.id);
+        if (shape) {
+          const world = screenToWorld(pos.x, pos.y);
+          const d = state.dragging;
+          // Compute delta in rotated local space
+          const rot = -(d.origRot);
+          const gdx = world.x - d.startWorld.x;
+          const gdy = world.y - d.startWorld.y;
+          const ldx = gdx * Math.cos(rot) - gdy * Math.sin(rot);
+          const ldy = gdx * Math.sin(rot) + gdy * Math.cos(rot);
+          const minS = 20;
+          let nx = d.origX, ny = d.origY, nw = d.origW, nh = d.origH;
+          const dir = d.dir;
+          if (dir.includes('e')) { nw = Math.max(minS, d.origW + ldx); }
+          if (dir.includes('w')) { nw = Math.max(minS, d.origW - ldx); nx = d.origX + (d.origW - nw); }
+          if (dir.includes('s')) { nh = Math.max(minS, d.origH + ldy); }
+          if (dir.includes('n')) { nh = Math.max(minS, d.origH - ldy); ny = d.origY + (d.origH - nh); }
+          shape.x = nx; shape.y = ny; shape.w = nw; shape.h = nh;
+          render();
+        }
+      } else if (state.dragging.type === 'shape-rotate') {
+        const shape = state.shapes.find(s => s.id === state.dragging.id);
+        if (shape) {
+          const world = screenToWorld(pos.x, pos.y);
+          const c = state.dragging.centerWorld;
+          let angle = Math.atan2(world.x - c.x, -(world.y - c.y));
+          // Shift snap to 15 degrees
+          if (state.shiftHeld) {
+            const snap = Math.PI / 12; // 15 degrees
+            angle = Math.round(angle / snap) * snap;
+          }
+          shape.rotation = angle;
+          render();
+        }
       } else if (state.dragging.type === 'timeline') {
         const tl = state.timelines.find(t => t.id === state.dragging.id);
         if (tl) {
@@ -4310,11 +4458,20 @@
       const schedBar = hitTestScheduleBar(pos.x, pos.y);
       const sbResizeCheck = hitTestScheduleBarResize(pos.x, pos.y);
       const tlResizeCheck = hitTestTimelineResize(pos.x, pos.y);
-      if (tlResizeCheck) {
+      const shapeRotCheck = hitTestShapeRotation(pos.x, pos.y);
+      const shapeResCheck = hitTestShapeResize(pos.x, pos.y);
+      const shapeCheck = hitTestShape(pos.x, pos.y);
+      if (shapeRotCheck) {
+        container.style.cursor = 'grab';
+      } else if (shapeResCheck) {
+        const rc = { nw: 'nwse-resize', ne: 'nesw-resize', se: 'nwse-resize', sw: 'nesw-resize',
+                     n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' };
+        container.style.cursor = rc[shapeResCheck.dir] || 'nwse-resize';
+      } else if (tlResizeCheck) {
         container.style.cursor = tlResizeCheck.dir === 'right' ? 'ew-resize' :
                                   tlResizeCheck.dir === 'bottom' ? 'ns-resize' : 'nwse-resize';
       } else {
-        container.style.cursor = sbResizeCheck ? 'ew-resize' : (wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (schedBar ? 'grab' : (connectorLine ? 'pointer' : 'default')))))));
+        container.style.cursor = shapeCheck ? 'grab' : (sbResizeCheck ? 'ew-resize' : (wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (schedBar ? 'grab' : (connectorLine ? 'pointer' : 'default'))))))));
       }
     } else if (state.tool === 'region' || state.tool === 'scheduleBar' || state.tool === 'shape') {
       container.style.cursor = 'crosshair';
@@ -4368,7 +4525,11 @@
         return b.x >= wx1 && b.x + b.w <= wx2 && b.y >= wy1 && b.y + b.h <= wy2;
       }).map(b => b.id);
 
-      state.multiSelection = { personIds: selectedPersonIds, regionIds: selectedRegionIds, textIds: selectedTextIds, connectorIds: selectedConnectorIds, scheduleBarIds: selectedBarIds };
+      const selectedShapeIds = state.shapes.filter(s => {
+        return s.x >= wx1 && s.x + s.w <= wx2 && s.y >= wy1 && s.y + s.h <= wy2;
+      }).map(s => s.id);
+
+      state.multiSelection = { personIds: selectedPersonIds, regionIds: selectedRegionIds, textIds: selectedTextIds, connectorIds: selectedConnectorIds, scheduleBarIds: selectedBarIds, shapeIds: selectedShapeIds };
       state.rangeSelect = null;
       container.style.cursor = 'default';
       updatePropsPanel();
@@ -4512,6 +4673,19 @@
 
   canvas.addEventListener('dblclick', (e) => {
     const pos = getCanvasPos(e);
+    // Shape label editing
+    const shapeHit = hitTestShape(pos.x, pos.y);
+    if (shapeHit) {
+      const label = prompt('図形ラベルを入力してください:', shapeHit.label || '');
+      if (label !== null) {
+        pushUndo();
+        shapeHit.label = label;
+        updatePropsPanel();
+        saveState();
+        render();
+      }
+      return;
+    }
     // Connector label editing
     const connector = hitTestConnector(pos.x, pos.y);
     if (connector) {
@@ -4940,7 +5114,7 @@
 
   function deleteSelected() {
     // Multi-selection delete
-    if (state.multiSelection.personIds.length > 0 || state.multiSelection.regionIds.length > 0 || (state.multiSelection.textIds || []).length > 0 || (state.multiSelection.connectorIds || []).length > 0) {
+    if (state.multiSelection.personIds.length > 0 || state.multiSelection.regionIds.length > 0 || (state.multiSelection.textIds || []).length > 0 || (state.multiSelection.connectorIds || []).length > 0 || (state.multiSelection.shapeIds || []).length > 0) {
       pushUndo();
       // Delete multi-selected persons
       state.multiSelection.personIds.forEach(pid => {
@@ -4965,7 +5139,11 @@
       (state.multiSelection.scheduleBarIds || []).forEach(bid => {
         state.scheduleBars = state.scheduleBars.filter(b => b.id !== bid);
       });
-      state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+      // Delete multi-selected shapes
+      (state.multiSelection.shapeIds || []).forEach(sid => {
+        state.shapes = state.shapes.filter(s => s.id !== sid);
+      });
+      state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] };
       clearSelection();
       renderPersonList();
       saveState();
@@ -5003,6 +5181,12 @@
     } else if (state.selectedType === 'timeline') {
       pushUndo();
       state.timelines = state.timelines.filter(t => t.id !== state.selectedId);
+      clearSelection();
+      saveState();
+      render();
+    } else if (state.selectedType === 'shape') {
+      pushUndo();
+      state.shapes = state.shapes.filter(s => s.id !== state.selectedId);
       clearSelection();
       saveState();
       render();
@@ -5923,6 +6107,38 @@
     });
   }
   setupTimelinePropListeners();
+
+  // Shape property change listeners
+  function setupShapePropListeners() {
+    const numFields = ['borderWidth', 'fontSize', 'w', 'h'];
+    const colorFields = ['color', 'borderColor', 'fontColor'];
+    const allFields = [...numFields, ...colorFields, 'type', 'label', 'rotation', 'opacity'];
+    allFields.forEach(field => {
+      const el = document.getElementById('prop-shape-' + field);
+      if (!el) return;
+      const evtType = (el.type === 'color' || el.type === 'range' || el.tagName === 'SELECT') ? 'input' : 'change';
+      el.addEventListener(evtType, () => {
+        if (state.selectedType !== 'shape') return;
+        const shape = state.shapes.find(s => s.id === state.selectedId);
+        if (!shape) return;
+        pushUndo();
+        if (field === 'rotation') {
+          shape.rotation = (parseFloat(el.value) || 0) * Math.PI / 180;
+        } else if (field === 'opacity') {
+          shape.opacity = parseFloat(el.value);
+        } else if (field === 'type' || field === 'label') {
+          shape[field] = el.value;
+        } else if (colorFields.includes(field)) {
+          shape[field] = el.value;
+        } else {
+          shape[field] = parseFloat(el.value) || shape[field];
+        }
+        render();
+        saveState();
+      });
+    });
+  }
+  setupShapePropListeners();
 
   // Text annotation click on canvas
   canvas.addEventListener('click', (e) => {
