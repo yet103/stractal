@@ -5072,11 +5072,19 @@
   }
 
   // Shape tool setup
-  state.activeShapeType = 'rect';
+  state.activeShapeType = localStorage.getItem('stractal_lastShapeType') || 'rect';
   const shapePalette = document.getElementById('shape-palette');
   const btnToolShape = document.getElementById('btn-tool-shape');
 
+  function updateShapeButton() {
+    if (!btnToolShape) return;
+    const currentShape = SHAPE_TYPES.find(st => st.type === state.activeShapeType) || SHAPE_TYPES[0];
+    btnToolShape.innerHTML = `<span class="shape-icon">${currentShape.icon}</span> ${currentShape.label}`;
+  }
+
   if (shapePalette && btnToolShape) {
+    updateShapeButton(); // initial update
+
     // Build palette items
     SHAPE_TYPES.forEach(st => {
       const item = document.createElement('div');
@@ -5086,6 +5094,8 @@
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         state.activeShapeType = st.type;
+        localStorage.setItem('stractal_lastShapeType', st.type);
+        updateShapeButton();
         shapePalette.querySelectorAll('.shape-palette-item').forEach(el => el.classList.remove('active'));
         item.classList.add('active');
         setToolActive('shape');
@@ -5100,7 +5110,7 @@
         shapePalette.style.display = shapePalette.style.display === 'none' ? 'grid' : 'none';
       } else {
         setToolActive('shape');
-        shapePalette.style.display = 'grid';
+        shapePalette.style.display = 'grid'; // Always open palette when switching to shape tool
       }
     });
 
@@ -6311,6 +6321,322 @@
     });
   }
 
+  // ===== SVG Export =====
+  function exportToSVG() {
+    const W = canvas.width / (window.devicePixelRatio || 1);
+    const H = canvas.height / (window.devicePixelRatio || 1);
+    const isDark = document.body.classList.contains('dark-mode');
+    const bgColor = isDark ? '#1a1a2e' : '#ffffff';
+    const gridColor = isDark ? 'rgba(100,120,180,0.15)' : 'rgba(173,198,230,0.3)';
+
+    const els = []; // SVG element strings
+
+    // Helper: escape XML
+    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    // Helper: hex to rgba string
+    const hexToRgba = (hex, a) => {
+      const c = hex.replace('#','');
+      const n = parseInt(c.length === 3 ? c[0]+c[0]+c[1]+c[1]+c[2]+c[2] : c, 16);
+      return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+    };
+
+    // Helper: build SVG path string from shape type (screen coords, centred at 0,0)
+    function shapePathD(type, sw, sh) {
+      const hw = sw / 2, hh = sh / 2;
+      switch (type) {
+        case 'rect': return `M${-hw},${-hh} h${sw} v${sh} h${-sw} Z`;
+        case 'roundedRect': {
+          const r = Math.min(sw, sh) * 0.15;
+          return `M${-hw+r},${-hh} L${hw-r},${-hh} Q${hw},${-hh} ${hw},${-hh+r} L${hw},${hh-r} Q${hw},${hh} ${hw-r},${hh} L${-hw+r},${hh} Q${-hw},${hh} ${-hw},${hh-r} L${-hw},${-hh+r} Q${-hw},${-hh} ${-hw+r},${-hh} Z`;
+        }
+        case 'ellipse': return `M${-hw},0 A${hw},${hh} 0 1 0 ${hw},0 A${hw},${hh} 0 1 0 ${-hw},0 Z`;
+        case 'triangle': return `M0,${-hh} L${hw},${hh} L${-hw},${hh} Z`;
+        case 'diamond': return `M0,${-hh} L${hw},0 L0,${hh} L${-hw},0 Z`;
+        case 'hexagon': {
+          const pts = [];
+          for (let i=0;i<6;i++){const a=Math.PI/180*(60*i-30);pts.push(`${hw*Math.cos(a)},${hh*Math.sin(a)}`);}
+          return `M${pts.join('L')}Z`;
+        }
+        case 'pentagon': {
+          const pts = [];
+          for (let i=0;i<5;i++){const a=Math.PI/180*(72*i-90);pts.push(`${hw*Math.cos(a)},${hh*Math.sin(a)}`);}
+          return `M${pts.join('L')}Z`;
+        }
+        case 'star': {
+          const pts = [];
+          for (let i=0;i<10;i++){const r2=i%2===0?1:0.4;const a=Math.PI/5*i-Math.PI/2;pts.push(`${hw*r2*Math.cos(a)},${hh*r2*Math.sin(a)}`);}
+          return `M${pts.join('L')}Z`;
+        }
+        case 'arrow': {
+          const tw = hw*0.35;
+          return `M${-hw},${-hh*0.5} L${hw-tw},${-hh*0.5} L${hw-tw},${-hh} L${hw},0 L${hw-tw},${hh} L${hw-tw},${hh*0.5} L${-hw},${hh*0.5} Z`;
+        }
+        case 'chevronRight': return `M${-hw},${-hh} L${hw*0.5},${-hh} L${hw},0 L${hw*0.5},${hh} L${-hw},${hh} L${-hw*0.5},0 Z`;
+        case 'chevronLeft':  return `M${hw},${-hh} L${-hw*0.5},${-hh} L${-hw},0 L${-hw*0.5},${hh} L${hw},${hh} L${hw*0.5},0 Z`;
+        case 'callout': return `M${-hw},${-hh} L${hw},${-hh} L${hw},${hh*0.4} L${-hw*0.1},${hh*0.4} L${-hw*0.3},${hh} L${-hw*0.5},${hh*0.4} L${-hw},${hh*0.4} Z`;
+        case 'cross': {
+          const t = Math.min(sw,sh)*0.3;
+          return `M${-t/2},${-hh} L${t/2},${-hh} L${t/2},${-t/2} L${hw},${-t/2} L${hw},${t/2} L${t/2},${t/2} L${t/2},${hh} L${-t/2},${hh} L${-t/2},${t/2} L${-hw},${t/2} L${-hw},${-t/2} L${-t/2},${-t/2} Z`;
+        }
+        case 'pill': {
+          const r3 = hh;
+          return `M${-hw+r3},${-hh} L${hw-r3},${-hh} Q${hw},${-hh} ${hw},0 Q${hw},${hh} ${hw-r3},${hh} L${-hw+r3},${hh} Q${-hw},${hh} ${-hw},0 Q${-hw},${-hh} ${-hw+r3},${-hh} Z`;
+        }
+        case 'parallelogram': {
+          const sk = sw*0.2;
+          return `M${-hw+sk},${-hh} L${hw},${-hh} L${hw-sk},${hh} L${-hw},${hh} Z`;
+        }
+        default: return `M${-hw},${-hh} h${sw} v${sh} h${-sw} Z`;
+      }
+    }
+
+    // 1. Background
+    els.push(`<rect width="${W}" height="${H}" fill="${bgColor}"/>`);
+
+    // 2. Grid
+    const gs = state.gridSize * state.zoom;
+    const cx0 = W / 2 + state.canvasOffset.x;
+    const cy0 = H / 3 + state.canvasOffset.y;
+    const startGX = cx0 % gs;
+    const startGY = cy0 % gs;
+    if (gs > 4) {
+      let gridLines = '';
+      for (let x = startGX; x < W; x += gs) gridLines += `<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H}" stroke="${gridColor}" stroke-width="1"/>`;
+      for (let y = startGY; y < H; y += gs) gridLines += `<line x1="0" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" stroke="${gridColor}" stroke-width="1"/>`;
+      els.push(`<g id="grid">${gridLines}</g>`);
+    }
+
+    // 3. Regions
+    const regionEls = [];
+    state.regions.forEach(r => {
+      if (!isOnVisibleLayer(r)) return;
+      const s = worldToScreen(r.x, r.y);
+      const e = worldToScreen(r.x + r.w, r.y + r.h);
+      const rw = e.x - s.x, rh = e.y - s.y;
+      const rc = r.color || '#4a8acf';
+      regionEls.push(`<rect x="${s.x.toFixed(1)}" y="${s.y.toFixed(1)}" width="${rw.toFixed(1)}" height="${rh.toFixed(1)}" fill="${hexToRgba(rc,0.05)}" stroke="${hexToRgba(rc,0.6)}" stroke-width="1.5" stroke-dasharray="6,3"/>`);
+      if (r.name) {
+        const rAlign = r.textAlign || 'left';
+        const svgAnchor = rAlign === 'center' ? 'middle' : rAlign === 'right' ? 'end' : 'start';
+        let lx = s.x + 4;
+        if (rAlign === 'center') lx = (s.x + e.x) / 2;
+        else if (rAlign === 'right') lx = e.x - 4;
+        const rFontSize = (r.fontSize || 13);
+        regionEls.push(`<text x="${lx.toFixed(1)}" y="${(s.y - 3).toFixed(1)}" fill="${rc}" font-size="${rFontSize}" font-family="Segoe UI,Meiryo,sans-serif" text-anchor="${svgAnchor}">${esc(r.name)}</text>`);
+      }
+    });
+    if (regionEls.length) els.push(`<g id="regions">${regionEls.join('')}</g>`);
+
+    // 4. Timelines
+    const tlEls = [];
+    state.timelines.forEach(tl => {
+      if (!isOnVisibleLayer(tl)) return;
+      const monthW = (tl.monthWidth || 80) * state.zoom;
+      const rowH = (tl.rowHeight || 30) * state.zoom;
+      const rowCount = tl.rowCount || 5;
+      const headerH = (tl.headerHeight || 50) * state.zoom;
+      const monthCount = tl.monthCount || 12;
+      const startYear = tl.startYear || 2026;
+      const startMonth = tl.startMonth || 4;
+      const origin = worldToScreen(tl.x, tl.y);
+      const totalW = monthW * monthCount;
+      const totalH = headerH + rowH * rowCount;
+      const fontSize = tl.fontSize || 11;
+
+      // Background row tints
+      for (let m = 0; m < monthCount; m++) {
+        const absMonth = startMonth + m;
+        const q = Math.floor(((absMonth - 1) % 12) / 3);
+        tlEls.push(`<rect x="${(origin.x+m*monthW).toFixed(1)}" y="${(origin.y+headerH).toFixed(1)}" width="${monthW.toFixed(1)}" height="${(rowH*rowCount).toFixed(1)}" fill="${QUARTER_COLORS[q]}" opacity="0.18"/>`);
+      }
+
+      // Year headers
+      let curYear = startYear, yearStart = 0;
+      for (let m = 0; m <= monthCount; m++) {
+        const absMonth = startMonth + m;
+        const yr = startYear + Math.floor((absMonth - 1) / 12);
+        if (yr !== curYear || m === monthCount) {
+          const x1 = origin.x + yearStart * monthW;
+          const x2 = origin.x + m * monthW;
+          tlEls.push(`<rect x="${x1.toFixed(1)}" y="${origin.y.toFixed(1)}" width="${(x2-x1).toFixed(1)}" height="${(headerH*0.45).toFixed(1)}" fill="#34495e"/>`);
+          tlEls.push(`<text x="${((x1+x2)/2).toFixed(1)}" y="${(origin.y+headerH*0.22).toFixed(1)}" fill="#fff" font-size="${Math.max(10,(fontSize+2)*state.zoom)}" font-family="Segoe UI,Meiryo,sans-serif" text-anchor="middle" dominant-baseline="middle">${curYear}年</text>`);
+          curYear = yr; yearStart = m;
+        }
+      }
+
+      // Month headers
+      for (let m = 0; m < monthCount; m++) {
+        const absMonth = startMonth + m;
+        const displayMonth = ((absMonth - 1) % 12) + 1;
+        const q = Math.floor((displayMonth - 1) / 3);
+        const mx = origin.x + m * monthW;
+        tlEls.push(`<rect x="${mx.toFixed(1)}" y="${(origin.y+headerH*0.45).toFixed(1)}" width="${monthW.toFixed(1)}" height="${(headerH*0.55).toFixed(1)}" fill="${QUARTER_COLORS[q]}" opacity="0.63"/>`);
+        tlEls.push(`<text x="${(mx+monthW/2).toFixed(1)}" y="${(origin.y+headerH*0.72).toFixed(1)}" fill="#2c3e50" font-size="${Math.max(9,fontSize*state.zoom)}" font-family="Segoe UI,Meiryo,sans-serif" text-anchor="middle" dominant-baseline="middle">${MONTH_NAMES_JA[displayMonth-1]}</text>`);
+      }
+
+      // Grid lines
+      for (let m = 0; m <= monthCount; m++) {
+        const absMonth = startMonth + m;
+        const displayMonth = ((absMonth - 1) % 12) + 1;
+        const lx = (origin.x + m * monthW).toFixed(1);
+        const strokeColor = (displayMonth === 1 || m === 0) ? '#2c3e50' : (displayMonth === 4 || displayMonth === 7 || displayMonth === 10) ? '#7f8c8d' : '#bdc3c7';
+        const sw2 = (displayMonth === 1 || m === 0) ? 2.5 : (displayMonth === 4 || displayMonth === 7 || displayMonth === 10) ? 1.5 : 0.5;
+        const dash = (displayMonth !== 1 && m !== 0 && displayMonth !== 4 && displayMonth !== 7 && displayMonth !== 10) ? ' stroke-dasharray="4,4"' : '';
+        tlEls.push(`<line x1="${lx}" y1="${(origin.y+headerH).toFixed(1)}" x2="${lx}" y2="${(origin.y+totalH).toFixed(1)}" stroke="${strokeColor}" stroke-width="${sw2}"${dash}/>`);
+      }
+      for (let r2 = 0; r2 <= rowCount; r2++) {
+        const ry = (origin.y + headerH + r2 * rowH).toFixed(1);
+        tlEls.push(`<line x1="${origin.x.toFixed(1)}" y1="${ry}" x2="${(origin.x+totalW).toFixed(1)}" y2="${ry}" stroke="#ddd" stroke-width="0.5"/>`);
+      }
+
+      // Outer border
+      tlEls.push(`<rect x="${origin.x.toFixed(1)}" y="${origin.y.toFixed(1)}" width="${totalW.toFixed(1)}" height="${totalH.toFixed(1)}" fill="none" stroke="#34495e" stroke-width="1.5"/>`);
+    });
+    if (tlEls.length) els.push(`<g id="timelines">${tlEls.join('')}</g>`);
+
+    // 5. Connectors
+    const connEls = [];
+    state.connectors.forEach(c => {
+      if (!isOnVisibleLayer(c)) return;
+      let points = [];
+      if (c.freeForm) {
+        const from = worldToScreen(c.fromX, c.fromY);
+        const to = worldToScreen(c.toX, c.toY);
+        const wps = (c.waypoints || []).map(w => worldToScreen(w.x, w.y));
+        points = [from, ...wps, to];
+      } else {
+        const fromR = state.regions.find(r => r.id === c.fromRegionId);
+        const toR = state.regions.find(r => r.id === c.toRegionId);
+        if (!fromR || !toR) return;
+        const from = getConnectionPoint(fromR, c.fromSide || 'right');
+        const to = getConnectionPoint(toR, c.toSide || 'left');
+        const wps = (c.waypoints || []).map(w => worldToScreen(w.x, w.y));
+        points = routeConnector(from, to, c.fromSide || 'right', c.toSide || 'left', wps.length ? wps : null);
+      }
+      if (points.length < 2) return;
+      const pStr = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+      let markerEnd = '';
+      if (c.direction === 'forward' || c.direction === 'both') markerEnd = ' marker-end="url(#arrowhead)"';
+      let markerStart = '';
+      if (c.direction === 'backward' || c.direction === 'both') markerStart = ' marker-start="url(#arrowhead-rev)"';
+      connEls.push(`<polyline points="${pStr}" fill="none" stroke="#666" stroke-width="1.5"${markerEnd}${markerStart}/>`);
+      if (c.label) {
+        const mid = points[Math.floor(points.length / 2)];
+        connEls.push(`<text x="${mid.x.toFixed(1)}" y="${(mid.y-6).toFixed(1)}" fill="#555" font-size="11" font-family="Segoe UI,Meiryo,sans-serif" text-anchor="middle">${esc(c.label)}</text>`);
+      }
+    });
+    if (connEls.length) els.push(`<g id="connectors">${connEls.join('')}</g>`);
+
+    // 6. Schedule Bars
+    const barEls = [];
+    state.scheduleBars.forEach(bar => {
+      if (!isOnVisibleLayer(bar)) return;
+      const s = worldToScreen(bar.x, bar.y);
+      const e = worldToScreen(bar.x + bar.w, bar.y + bar.h);
+      const sw3 = e.x - s.x, sh3 = e.y - s.y;
+      if (sw3 < 1 || sh3 < 1) return;
+      const tipW = Math.min(sh3 * 0.5, sw3 * 0.3);
+      const bc = bar.color || '#4a8acf';
+      let d = '';
+      switch (bar.tipShape || 'chevron') {
+        case 'chevron':       d = `M${s.x},${s.y} L${e.x-tipW},${s.y} L${e.x},${s.y+sh3/2} L${e.x-tipW},${e.y} L${s.x},${e.y} Z`; break;
+        case 'doubleChevron': d = `M${s.x+tipW},${s.y} L${e.x-tipW},${s.y} L${e.x},${s.y+sh3/2} L${e.x-tipW},${e.y} L${s.x+tipW},${e.y} L${s.x},${s.y+sh3/2} Z`; break;
+        case 'flat':          d = `M${s.x},${s.y} h${sw3} v${sh3} h${-sw3} Z`; break;
+        case 'diamond': {const mcx=s.x+sw3/2,mcy=s.y+sh3/2; d=`M${mcx},${s.y} L${e.x},${mcy} L${mcx},${e.y} L${s.x},${mcy} Z`; break;}
+        case 'arrow':         d = `M${s.x},${s.y} L${e.x-tipW},${s.y} L${e.x-tipW},${s.y-sh3*0.15} L${e.x},${s.y+sh3/2} L${e.x-tipW},${e.y+sh3*0.15} L${e.x-tipW},${e.y} L${s.x},${e.y} Z`; break;
+        default:              d = `M${s.x},${s.y} h${sw3} v${sh3} h${-sw3} Z`;
+      }
+      barEls.push(`<path d="${d}" fill="${bc}" stroke="${darkenColor(bc,0.2)}" stroke-width="1"/>`);
+      if (bar.label) {
+        const contrastColor = getContrastColor(bc);
+        barEls.push(`<text x="${(s.x+sw3/2).toFixed(1)}" y="${(s.y+sh3/2).toFixed(1)}" fill="${contrastColor}" font-size="${Math.min(sh3*0.6,14*state.zoom).toFixed(1)}" font-family="Segoe UI,Meiryo,sans-serif" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${esc(bar.label)}</text>`);
+      }
+    });
+    if (barEls.length) els.push(`<g id="schedulebars">${barEls.join('')}</g>`);
+
+    // 7. Shapes (15 types)
+    const shapeEls = [];
+    state.shapes.forEach(shape => {
+      if (!isOnVisibleLayer(shape)) return;
+      const scx = shape.x + shape.w / 2;
+      const scy = shape.y + shape.h / 2;
+      const origin = worldToScreen(scx, scy);
+      const sw4 = shape.w * state.zoom;
+      const sh4 = shape.h * state.zoom;
+      const rot = shape.rotation || 0;
+      const rotDeg = (rot * 180 / Math.PI).toFixed(2);
+      const d = shapePathD(shape.type, sw4, sh4);
+      const opacity = shape.opacity != null ? shape.opacity : 1;
+      shapeEls.push(`<g transform="translate(${origin.x.toFixed(1)},${origin.y.toFixed(1)}) rotate(${rotDeg})" opacity="${opacity}"><path d="${d}" fill="${shape.color||'#4a90d9'}" stroke="${shape.borderColor||'#2c3e50'}" stroke-width="${shape.borderWidth||1}"/>${shape.label ? `<text fill="${shape.fontColor||'#ffffff'}" font-size="${Math.max(8,(shape.fontSize||12)*state.zoom)}" font-family="Segoe UI,Meiryo,sans-serif" text-anchor="middle" dominant-baseline="middle">${esc(shape.label)}</text>` : ''}</g>`);
+    });
+    if (shapeEls.length) els.push(`<g id="shapes">${shapeEls.join('')}</g>`);
+
+    // 8. Text Annotations
+    const textEls = [];
+    state.textAnnotations.forEach(t => {
+      if (!isOnVisibleLayer(t)) return;
+      const s = worldToScreen(t.x, t.y);
+      const fs = (t.fontSize || 9) * state.zoom;
+      textEls.push(`<text x="${s.x.toFixed(1)}" y="${s.y.toFixed(1)}" fill="${t.color||'#2c3e50'}" font-size="${fs.toFixed(1)}" font-family="Segoe UI,Meiryo,sans-serif">${esc(t.text||'')}</text>`);
+    });
+    if (textEls.length) els.push(`<g id="text-annotations">${textEls.join('')}</g>`);
+
+    // 9. Persons (simplified: circle head + triangle body + name)
+    const personEls = [];
+    const sortedPersons = [...state.persons].sort((a,b) => a.y - b.y);
+    sortedPersons.forEach(p => {
+      if (!isOnVisibleLayer(p)) return;
+      const s = worldToScreen(p.x, p.y);
+      const color = p.color || '#4a8acf';
+      const headR = 9;
+      const bodyH = 24, bodyW = 18;
+      const bodyTop = s.y - bodyH * 0.35;
+      const bodyBottom = s.y + bodyH * 0.5;
+      const headCY = bodyTop + headR * 0.5;
+      // Body triangle
+      personEls.push(`<polygon points="${s.x},${bodyTop.toFixed(1)} ${(s.x+bodyW/2).toFixed(1)},${bodyBottom.toFixed(1)} ${(s.x-bodyW/2).toFixed(1)},${bodyBottom.toFixed(1)}" fill="${color}" stroke="${darkenColor(color,0.35)}" stroke-width="1"/>`);
+      // Head circle
+      personEls.push(`<circle cx="${s.x.toFixed(1)}" cy="${headCY.toFixed(1)}" r="${headR}" fill="${color}" stroke="${darkenColor(color,0.35)}" stroke-width="1"/>`);
+      // Name
+      if (p.name) {
+        personEls.push(`<text x="${s.x.toFixed(1)}" y="${(bodyBottom+16).toFixed(1)}" fill="#2c3e50" font-size="13" font-family="Segoe UI,Meiryo,sans-serif" text-anchor="middle">${esc(p.name)}</text>`);
+      }
+    });
+    if (personEls.length) els.push(`<g id="persons">${personEls.join('')}</g>`);
+
+    // Build final SVG
+    const defs = `<defs>
+      <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+      </marker>
+      <marker id="arrowhead-rev" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto-start-reverse">
+        <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+      </marker>
+    </defs>`;
+    const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+${defs}
+${els.join('\n')}
+</svg>`;
+
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.href = url;
+    a.download = `orgchart_${timestamp}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  const btnExportSvg = document.getElementById('btn-export-svg');
+  if (btnExportSvg) {
+    btnExportSvg.addEventListener('click', exportToSVG);
+  }
+
   // ===== CSV Import =====
   if (btnImportCsv && csvImportInput) {
     btnImportCsv.addEventListener('click', () => csvImportInput.click());
@@ -6738,6 +7064,7 @@
     proxyClick('menu-load', 'btn-load-file');
     proxyClick('menu-import-csv', 'btn-import-csv');
     proxyClick('menu-export-png', 'btn-export-png');
+    proxyClick('menu-export-svg', 'btn-export-svg');
     proxyClick('menu-print', 'btn-print');
     proxyClick('menu-share-url', 'btn-share-url');
 
