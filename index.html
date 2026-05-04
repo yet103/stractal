@@ -117,6 +117,7 @@
           <button class="btn" id="btn-tool-region" title="領域を描画">⬜ 領域</button>
           <button class="btn" id="btn-tool-connector" title="図形描画 (Shift)">✏️ 図形描画</button>
           <button class="btn" id="btn-tool-text" title="テキスト注釈">📝 注釈</button>
+          <button class="btn" id="btn-tool-scheduleBar" title="スケジュールバー">📅 スケジュール</button>
         </div>
         <div class="toolbar-group" id="tg-features">
           <button class="btn" id="btn-bulk-create" title="一括作成">📋 一括作成</button>
@@ -354,6 +355,35 @@
           <div class="prop-group">
             <div class="prop-label">色</div>
             <input type="color" class="prop-color-input" id="prop-text-color" value="#2c3e50">
+          </div>
+        </div>
+        <div id="scheduleBar-props" style="display:none;">
+          <div class="prop-group">
+            <div class="prop-label">ラベル</div>
+            <input type="text" class="prop-input" id="prop-bar-label" placeholder="バーラベル">
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">先端形状</div>
+            <select class="prop-input" id="prop-bar-tipshape">
+              <option value="chevron">▷ シェブロン</option>
+              <option value="doubleChevron">◁▷ ダブルシェブロン</option>
+              <option value="flat">□ フラット</option>
+              <option value="diamond">◇ ダイヤ</option>
+              <option value="arrow">▶ 矢印</option>
+            </select>
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">色</div>
+            <input type="color" class="prop-color-input" id="prop-bar-color" value="#4a8acf">
+          </div>
+          <hr class="prop-separator">
+          <div class="prop-group">
+            <div class="prop-label">幅</div>
+            <input type="number" class="prop-input" id="prop-bar-width" value="100" min="20">
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">高さ</div>
+            <input type="number" class="prop-input" id="prop-bar-height" value="30" min="10">
           </div>
         </div>
         <div id="layer-assign-props" style="display:none;">

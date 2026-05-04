@@ -9,19 +9,20 @@
     roles: [],
     connectors: [],
     textAnnotations: [],
+    scheduleBars: [],
     layers: [{ id: 1, name: 'メイン', visible: true, locked: false }],
     activeLayerId: 1,
     tabs: [],
     activeTabId: null,
     viewMode: 'square', // 'square' | 'quarter'
-    tool: 'select',     // 'select' | 'region' | 'connector' | 'text'
+    tool: 'select',     // 'select' | 'region' | 'connector' | 'text' | 'scheduleBar'
     selectedId: null,
-    selectedType: null,  // 'person' | 'region' | 'connector' | 'text'
+    selectedType: null,  // 'person' | 'region' | 'connector' | 'text' | 'scheduleBar'
     dragging: null,
     regionDraw: null,
     connectorDraw: null, // { fromRegionId, fromSide, currentX, currentY }
     rangeSelect: null,
-    multiSelection: { personIds: [], regionIds: [], textIds: [], connectorIds: [] },
+    multiSelection: { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] },
     shiftHeld: false,
     prevTool: null, // for shift-key temp connector mode
     addingWaypoints: false, // show "+" handles for adding waypoints
@@ -224,11 +225,13 @@
     drawConnectors();
     drawRegions();
     drawRegionPreview();
+    drawScheduleBars();
     drawTextAnnotations();
     drawPersons();
     drawConnectorPreview();
     drawConnectionPoints();
     drawRangeSelect();
+    drawScheduleBarPreview();
   }
 
   function drawTextAnnotations() {
@@ -255,6 +258,173 @@
         ctx.setLineDash([]);
       }
     });
+  }
+
+  // ===== Schedule Bar Drawing =====
+  function drawScheduleBarShape(ctx, x, y, w, h, tipShape, color, isSelected) {
+    const tipW = Math.min(h * 0.5, w * 0.3);
+    ctx.beginPath();
+    switch (tipShape) {
+      case 'chevron': // right end pointed
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + w - tipW, y);
+        ctx.lineTo(x + w, y + h / 2);
+        ctx.lineTo(x + w - tipW, y + h);
+        ctx.lineTo(x, y + h);
+        ctx.closePath();
+        break;
+      case 'doubleChevron': // both ends pointed
+        ctx.moveTo(x + tipW, y);
+        ctx.lineTo(x + w - tipW, y);
+        ctx.lineTo(x + w, y + h / 2);
+        ctx.lineTo(x + w - tipW, y + h);
+        ctx.lineTo(x + tipW, y + h);
+        ctx.lineTo(x, y + h / 2);
+        ctx.closePath();
+        break;
+      case 'flat': // rectangle
+        ctx.rect(x, y, w, h);
+        break;
+      case 'diamond': // diamond shape
+        const cx = x + w / 2, cy = y + h / 2;
+        ctx.moveTo(cx, y);
+        ctx.lineTo(x + w, cy);
+        ctx.lineTo(cx, y + h);
+        ctx.lineTo(x, cy);
+        ctx.closePath();
+        break;
+      case 'arrow': // filled arrow tip
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + w - tipW, y);
+        ctx.lineTo(x + w - tipW, y - h * 0.15);
+        ctx.lineTo(x + w, y + h / 2);
+        ctx.lineTo(x + w - tipW, y + h + h * 0.15);
+        ctx.lineTo(x + w - tipW, y + h);
+        ctx.lineTo(x, y + h);
+        ctx.closePath();
+        break;
+      default:
+        ctx.rect(x, y, w, h);
+    }
+    ctx.fillStyle = color || '#4a8acf';
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? '#ff6b35' : darkenColor(color || '#4a8acf', 0.2);
+    ctx.lineWidth = isSelected ? 2.5 : 1;
+    ctx.stroke();
+  }
+
+  function darkenColor(hex, amount) {
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+    const num = parseInt(c, 16);
+    let r = (num >> 16) & 0xFF, g = (num >> 8) & 0xFF, b = num & 0xFF;
+    r = Math.max(0, Math.round(r * (1 - amount)));
+    g = Math.max(0, Math.round(g * (1 - amount)));
+    b = Math.max(0, Math.round(b * (1 - amount)));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function drawScheduleBars() {
+    state.scheduleBars.forEach(bar => {
+      if (!isOnVisibleLayer(bar)) return;
+      const s = worldToScreen(bar.x, bar.y);
+      const e = worldToScreen(bar.x + bar.w, bar.y + bar.h);
+      const sw = e.x - s.x;
+      const sh = e.y - s.y;
+      if (sw < 1 || sh < 1) return;
+
+      const isSelected = (state.selectedType === 'scheduleBar' && state.selectedId === bar.id)
+        || (state.multiSelection.scheduleBarIds || []).includes(bar.id);
+
+      ctx.save();
+      drawScheduleBarShape(ctx, s.x, s.y, sw, sh, bar.tipShape || 'chevron', bar.color || '#4a8acf', isSelected);
+
+      // Label
+      if (bar.label) {
+        const fontSize = Math.min(sh * 0.6, 14 * state.zoom);
+        ctx.font = `bold ${fontSize}px "Segoe UI", "Meiryo", sans-serif`;
+        ctx.fillStyle = getContrastColor(bar.color || '#4a8acf');
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const cx = s.x + sw / 2;
+        const cy = s.y + sh / 2;
+        const maxTextW = sw * 0.85;
+        const text = bar.label;
+        const measured = ctx.measureText(text).width;
+        if (measured > maxTextW && text.length > 3) {
+          // Truncate
+          let truncated = text;
+          while (ctx.measureText(truncated + '…').width > maxTextW && truncated.length > 1) {
+            truncated = truncated.slice(0, -1);
+          }
+          ctx.fillText(truncated + '…', cx, cy);
+        } else {
+          ctx.fillText(text, cx, cy);
+        }
+      }
+      ctx.restore();
+
+      // Resize handles when selected
+      if (isSelected) {
+        const handleSize = 6;
+        ctx.fillStyle = '#ff6b35';
+        // Left handle
+        ctx.fillRect(s.x - handleSize/2, s.y + sh/2 - handleSize/2, handleSize, handleSize);
+        // Right handle
+        ctx.fillRect(e.x - handleSize/2, s.y + sh/2 - handleSize/2, handleSize, handleSize);
+        // Top-left
+        ctx.fillRect(s.x - handleSize/2, s.y - handleSize/2, handleSize, handleSize);
+        // Bottom-right
+        ctx.fillRect(e.x - handleSize/2, e.y - handleSize/2, handleSize, handleSize);
+      }
+    });
+  }
+
+  function drawScheduleBarPreview() {
+    if (state.tool !== 'scheduleBar' || !state.scheduleBarDraw) return;
+    const d = state.scheduleBarDraw;
+    const s = worldToScreen(d.x, d.y);
+    const e = worldToScreen(d.x + d.w, d.y + d.h);
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    drawScheduleBarShape(ctx, s.x, s.y, e.x - s.x, e.y - s.y, 'chevron', '#4a8acf', false);
+    ctx.restore();
+  }
+
+  function getContrastColor(hex) {
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+    const num = parseInt(c, 16);
+    const r = (num >> 16) & 0xFF, g = (num >> 8) & 0xFF, b = num & 0xFF;
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.5 ? '#2c3e50' : '#ffffff';
+  }
+
+  function hitTestScheduleBar(sx, sy) {
+    const w = screenToWorld(sx, sy);
+    for (let i = state.scheduleBars.length - 1; i >= 0; i--) {
+      const bar = state.scheduleBars[i];
+      if (w.x >= bar.x && w.x <= bar.x + bar.w && w.y >= bar.y && w.y <= bar.y + bar.h) {
+        return bar;
+      }
+    }
+    return null;
+  }
+
+  function hitTestScheduleBarResize(sx, sy) {
+    if (state.selectedType !== 'scheduleBar') return null;
+    const bar = state.scheduleBars.find(b => b.id === state.selectedId);
+    if (!bar) return null;
+    const s = worldToScreen(bar.x, bar.y);
+    const e = worldToScreen(bar.x + bar.w, bar.y + bar.h);
+    const handleSize = 8;
+    // Right edge
+    if (Math.abs(sx - e.x) < handleSize && sy > s.y - handleSize && sy < e.y + handleSize) return 'right';
+    // Left edge
+    if (Math.abs(sx - s.x) < handleSize && sy > s.y - handleSize && sy < e.y + handleSize) return 'left';
+    // Bottom-right corner
+    if (Math.abs(sx - e.x) < handleSize && Math.abs(sy - e.y) < handleSize) return 'bottom-right';
+    return null;
   }
 
   // ===== Connector Helpers =====
@@ -2052,6 +2222,7 @@
       roles: state.roles,
       connectors: state.connectors,
       textAnnotations: state.textAnnotations,
+      scheduleBars: state.scheduleBars,
       nextId: state.nextId,
     }));
   }
@@ -2274,10 +2445,11 @@
     state.roles = snap.roles;
     state.connectors = snap.connectors || [];
     state.textAnnotations = snap.textAnnotations || [];
+    state.scheduleBars = snap.scheduleBars || [];
     state.nextId = snap.nextId;
     state.persons.forEach(migrateResource);
     clearSelection();
-    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
     renderPersonList();
     saveState();
     render();
@@ -2378,6 +2550,7 @@
       if (state.selectedType === 'region') return state.regions.find(r => r.id === state.selectedId);
       if (state.selectedType === 'connector') return state.connectors.find(c => c.id === state.selectedId);
       if (state.selectedType === 'text') return state.textAnnotations.find(t => t.id === state.selectedId);
+      if (state.selectedType === 'scheduleBar') return state.scheduleBars.find(b => b.id === state.selectedId);
       return null;
     }
     noSelectionMsg.style.display = 'none';
@@ -2387,6 +2560,8 @@
     if (itemPropsEl) itemPropsEl.style.display = 'none';
     if (connectorProps) connectorProps.style.display = 'none';
     if (textProps) textProps.style.display = 'none';
+    const schedBarPropsEl = document.getElementById('scheduleBar-props');
+    if (schedBarPropsEl) schedBarPropsEl.style.display = 'none';
 
     if (state.selectedType === 'person') {
       const p = state.persons.find(p => p.id === state.selectedId);
@@ -2459,6 +2634,26 @@
       if (propTextContent) propTextContent.value = t.text || '';
       if (propTextFontsize) propTextFontsize.value = t.fontSize || 9;
       if (propTextColor) propTextColor.value = t.color || '#2c3e50';
+    } else if (state.selectedType === 'scheduleBar') {
+      const bar = state.scheduleBars.find(b => b.id === state.selectedId);
+      if (!bar) return;
+      const el = document.getElementById('scheduleBar-props');
+      if (el) {
+        el.style.display = 'block';
+        // Auto-show floating property panel
+        const sr = document.getElementById('sidebar-right');
+        if (sr && sr.style.display === 'none') sr.style.display = 'flex';
+        const propBarLabel = document.getElementById('prop-bar-label');
+        const propBarColor = document.getElementById('prop-bar-color');
+        const propBarTip = document.getElementById('prop-bar-tipshape');
+        const propBarW = document.getElementById('prop-bar-width');
+        const propBarH = document.getElementById('prop-bar-height');
+        if (propBarLabel) propBarLabel.value = bar.label || '';
+        if (propBarColor) propBarColor.value = bar.color || '#4a8acf';
+        if (propBarTip) propBarTip.value = bar.tipShape || 'chevron';
+        if (propBarW) propBarW.value = Math.round(bar.w);
+        if (propBarH) propBarH.value = Math.round(bar.h);
+      }
     } else if (state.multiSelection.personIds.length > 0) {
       // Multi-selection: show color picker for batch color change
       personProps.style.display = 'block';
@@ -2779,7 +2974,7 @@
         const connector = hitTestConnector(pos.x, pos.y);
         if (connector) {
           selectItem('connector', connector.id);
-          state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+          state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
           showConnectorContextMenu(e.clientX, e.clientY, connector);
           return;
         }
@@ -2818,7 +3013,7 @@
       }
 
       // Check if clicking on any multi-selected item (person or region)
-      const hasMultiSelection = state.multiSelection.personIds.length > 0 || state.multiSelection.regionIds.length > 0 || (state.multiSelection.textIds || []).length > 0 || (state.multiSelection.connectorIds || []).length > 0;
+      const hasMultiSelection = state.multiSelection.personIds.length > 0 || state.multiSelection.regionIds.length > 0 || (state.multiSelection.textIds || []).length > 0 || (state.multiSelection.connectorIds || []).length > 0 || (state.multiSelection.scheduleBarIds || []).length > 0;
 
       const person = hitTestPerson(pos.x, pos.y);
       if (person) {
@@ -2858,7 +3053,7 @@
           }
         }
         selectItem('person', person.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
         pushUndo();
         state.dragging = {
           type: 'person',
@@ -2894,7 +3089,7 @@
           return;
         }
         selectItem('region', region.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
         const s = worldToScreen(region.x, region.y);
         const childPersonIds = state.persons.filter(p =>
           p.x >= region.x && p.x <= region.x + region.w &&
@@ -2995,7 +3190,7 @@
           return;
         }
         selectItem('text', textAnn.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
         pushUndo();
         state.dragging = {
           type: 'text',
@@ -3030,7 +3225,7 @@
           return;
         }
         selectItem('connector', connector.id);
-        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
         if (connector.freeForm) {
           const endpoint = hitTestFreeFormEndpoint(pos.x, pos.y, connector);
           pushUndo();
@@ -3054,9 +3249,63 @@
         return;
       }
 
+      // Check for scheduleBar resize
+      const sbResize = hitTestScheduleBarResize(pos.x, pos.y);
+      if (sbResize) {
+        const bar = state.scheduleBars.find(b => b.id === state.selectedId);
+        if (bar) {
+          pushUndo();
+          state.dragging = {
+            type: 'scheduleBar-resize',
+            id: bar.id,
+            dir: sbResize,
+            origX: bar.x,
+            origY: bar.y,
+            origW: bar.w,
+            origH: bar.h,
+            startPos: screenToWorld(pos.x, pos.y),
+          };
+          container.style.cursor = 'ew-resize';
+          return;
+        }
+      }
+
+      // Check for scheduleBar click
+      const schedBar = hitTestScheduleBar(pos.x, pos.y);
+      if (schedBar) {
+        if (e.ctrlKey) {
+          const idx = (state.multiSelection.scheduleBarIds || []).indexOf(schedBar.id);
+          if (idx >= 0) {
+            state.multiSelection.scheduleBarIds.splice(idx, 1);
+          } else {
+            state.multiSelection.scheduleBarIds.push(schedBar.id);
+          }
+          updatePropsPanel();
+          render();
+          return;
+        }
+        if ((state.multiSelection.scheduleBarIds || []).includes(schedBar.id)) {
+          pushUndo();
+          const startWorld = screenToWorld(pos.x, pos.y);
+          state.dragging = { type: 'multi', lastWorld: startWorld };
+          container.style.cursor = 'grabbing';
+          return;
+        }
+        selectItem('scheduleBar', schedBar.id);
+        state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
+        pushUndo();
+        state.dragging = {
+          type: 'scheduleBar',
+          id: schedBar.id,
+          lastWorld: screenToWorld(pos.x, pos.y),
+        };
+        container.style.cursor = 'grabbing';
+        return;
+      }
+
       // Empty space left drag -> range selection
       clearSelection();
-      state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+      state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
       state.rangeSelect = {
         startX: pos.x,
         startY: pos.y,
@@ -3099,6 +3348,18 @@
         container.style.cursor = 'crosshair';
         render();
       }
+    }
+    } else if (state.tool === 'scheduleBar') {
+      pushUndo();
+      const world = screenToWorld(pos.x, pos.y);
+      state.scheduleBarDraw = {
+        x: world.x,
+        y: world.y,
+        w: 0,
+        h: 0,
+        startX: world.x,
+        startY: world.y,
+      };
     }
   });
 
@@ -3190,6 +3451,11 @@
           const c = state.connectors.find(c => c.id === cid);
           if (c && c.freeForm) { c.fromX += dx; c.fromY += dy; c.toX += dx; c.toY += dy; }
         });
+        // Move selected scheduleBars
+        (state.multiSelection.scheduleBarIds || []).forEach(bid => {
+          const b = state.scheduleBars.find(b => b.id === bid);
+          if (b) { b.x += dx; b.y += dy; }
+        });
         state.dragging.lastWorld = world;
         render();
       } else if (state.dragging.type === 'pan') {
@@ -3261,6 +3527,38 @@
           r.x = nx; r.y = ny; r.w = nw; r.h = nh;
           render();
         }
+      } else if (state.dragging.type === 'scheduleBar') {
+        const bar = state.scheduleBars.find(b => b.id === state.dragging.id);
+        if (bar) {
+          const world = screenToWorld(pos.x, pos.y);
+          const dx = world.x - state.dragging.lastWorld.x;
+          const dy = world.y - state.dragging.lastWorld.y;
+          bar.x += dx;
+          bar.y += dy;
+          state.dragging.lastWorld = world;
+          render();
+        }
+      } else if (state.dragging.type === 'scheduleBar-resize') {
+        const bar = state.scheduleBars.find(b => b.id === state.dragging.id);
+        if (bar) {
+          const world = screenToWorld(pos.x, pos.y);
+          const dx = world.x - state.dragging.startPos.x;
+          const MIN_W = 20, MIN_H = 10;
+          if (state.dragging.dir === 'right') {
+            bar.w = Math.max(MIN_W, state.dragging.origW + dx);
+          } else if (state.dragging.dir === 'left') {
+            const newW = state.dragging.origW - dx;
+            if (newW >= MIN_W) {
+              bar.x = state.dragging.origX + dx;
+              bar.w = newW;
+            }
+          } else if (state.dragging.dir === 'bottom-right') {
+            const dy = world.y - state.dragging.startPos.y;
+            bar.w = Math.max(MIN_W, state.dragging.origW + dx);
+            bar.h = Math.max(MIN_H, state.dragging.origH + dy);
+          }
+          render();
+        }
       }
       return;
     }
@@ -3269,6 +3567,17 @@
       const world = screenToWorld(pos.x, pos.y);
       state.regionDraw.currentX = world.x;
       state.regionDraw.currentY = world.y;
+      render();
+      return;
+    }
+
+    if (state.scheduleBarDraw) {
+      const world = screenToWorld(pos.x, pos.y);
+      const d = state.scheduleBarDraw;
+      d.x = Math.min(d.startX, world.x);
+      d.y = Math.min(d.startY, world.y);
+      d.w = Math.abs(world.x - d.startX);
+      d.h = Math.abs(world.y - d.startY);
       render();
       return;
     }
@@ -3286,8 +3595,10 @@
       const wpHandle = hitTestWaypointHandle(pos.x, pos.y);
       const mpHandle = hitTestMidpointHandle(pos.x, pos.y);
       const connectorLine = hitTestConnector(pos.x, pos.y);
-      container.style.cursor = wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (connectorLine ? 'pointer' : 'default')))));
-    } else if (state.tool === 'region') {
+      const schedBar = hitTestScheduleBar(pos.x, pos.y);
+      const sbResizeCheck = hitTestScheduleBarResize(pos.x, pos.y);
+      container.style.cursor = sbResizeCheck ? 'ew-resize' : (wpHandle ? 'move' : (mpHandle ? 'pointer' : (person ? 'grab' : (region ? 'move' : (textAnn ? 'grab' : (schedBar ? 'grab' : (connectorLine ? 'pointer' : 'default')))))));
+    } else if (state.tool === 'region' || state.tool === 'scheduleBar') {
       container.style.cursor = 'crosshair';
     } else if (state.tool === 'connector') {
       const cp = hitTestConnectionPoint(pos.x, pos.y);
@@ -3335,7 +3646,11 @@
         return minX >= wx1 && maxX <= wx2 && minY >= wy1 && maxY <= wy2;
       }).map(c => c.id);
 
-      state.multiSelection = { personIds: selectedPersonIds, regionIds: selectedRegionIds, textIds: selectedTextIds, connectorIds: selectedConnectorIds };
+      const selectedBarIds = state.scheduleBars.filter(b => {
+        return b.x >= wx1 && b.x + b.w <= wx2 && b.y >= wy1 && b.y + b.h <= wy2;
+      }).map(b => b.id);
+
+      state.multiSelection = { personIds: selectedPersonIds, regionIds: selectedRegionIds, textIds: selectedTextIds, connectorIds: selectedConnectorIds, scheduleBarIds: selectedBarIds };
       state.rangeSelect = null;
       container.style.cursor = 'default';
       updatePropsPanel();
@@ -3434,6 +3749,28 @@
       state.regionDraw = null;
       render();
     }
+
+    if (state.scheduleBarDraw) {
+      const d = state.scheduleBarDraw;
+      if (d.w > 10 && d.h > 5) {
+        const bar = {
+          id: state.nextId++,
+          label: '',
+          x: d.x,
+          y: d.y,
+          w: d.w,
+          h: d.h,
+          color: '#4a8acf',
+          tipShape: 'chevron',
+          layerId: state.activeLayerId,
+        };
+        state.scheduleBars.push(bar);
+        selectItem('scheduleBar', bar.id);
+        saveState();
+      }
+      state.scheduleBarDraw = null;
+      render();
+    }
   });
 
   // Prevent context menu on canvas (for right-drag pan)
@@ -3468,6 +3805,23 @@
         saveState();
         render();
       }
+    }
+
+    // ScheduleBar label editing
+    const schedBar = hitTestScheduleBar(pos.x, pos.y);
+    if (schedBar) {
+      const label = prompt('スケジュールバーのラベルを入力してください:', schedBar.label || '');
+      if (label !== null) {
+        pushUndo();
+        schedBar.label = label;
+        if (state.selectedType === 'scheduleBar' && state.selectedId === schedBar.id) {
+          const propBarLabel = document.getElementById('prop-bar-label');
+          if (propBarLabel) propBarLabel.value = label;
+        }
+        saveState();
+        render();
+      }
+      return;
     }
   });
 
@@ -3788,6 +4142,8 @@
     btnToolRegion.classList.toggle('active', tool === 'region');
     if (btnToolConnector) btnToolConnector.classList.toggle('active', tool === 'connector');
     if (btnToolText) btnToolText.classList.toggle('active', tool === 'text');
+    const btnSB = document.getElementById('btn-tool-scheduleBar');
+    if (btnSB) btnSB.classList.toggle('active', tool === 'scheduleBar');
     container.style.cursor = tool === 'select' ? 'default' : 'crosshair';
     render();
   }
@@ -3823,6 +4179,10 @@
       (state.multiSelection.connectorIds || []).forEach(cid => {
         state.connectors = state.connectors.filter(c => c.id !== cid);
       });
+      // Delete multi-selected scheduleBars
+      (state.multiSelection.scheduleBarIds || []).forEach(bid => {
+        state.scheduleBars = state.scheduleBars.filter(b => b.id !== bid);
+      });
       state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
       clearSelection();
       renderPersonList();
@@ -3849,6 +4209,12 @@
     } else if (state.selectedType === 'text') {
       pushUndo();
       state.textAnnotations = state.textAnnotations.filter(t => t.id !== state.selectedId);
+      clearSelection();
+      saveState();
+      render();
+    } else if (state.selectedType === 'scheduleBar') {
+      pushUndo();
+      state.scheduleBars = state.scheduleBars.filter(b => b.id !== state.selectedId);
       clearSelection();
       saveState();
       render();
@@ -4514,6 +4880,7 @@
           regions: JSON.parse(JSON.stringify(state.regions)),
           connectors: JSON.parse(JSON.stringify(state.connectors)),
           textAnnotations: JSON.parse(JSON.stringify(state.textAnnotations)),
+          scheduleBars: JSON.parse(JSON.stringify(state.scheduleBars)),
           layers: JSON.parse(JSON.stringify(state.layers)),
           activeLayerId: state.activeLayerId,
           canvasOffset: { ...state.canvasOffset },
@@ -4527,6 +4894,7 @@
       roles: state.roles,
       connectors: state.connectors,
       textAnnotations: state.textAnnotations,
+      scheduleBars: state.scheduleBars,
       layers: state.layers,
       tabs: state.tabs,
       activeTabId: state.activeTabId,
@@ -4548,6 +4916,7 @@
         state.roles = data.roles || [];
         state.connectors = data.connectors || [];
         state.textAnnotations = data.textAnnotations || [];
+        state.scheduleBars = data.scheduleBars || [];
         state.nextId = data.nextId || 1;
         if (data.layers && data.layers.length > 0) {
           state.layers = data.layers;
@@ -4653,10 +5022,51 @@
     });
   }
 
-  // ===== Text Annotation Tool =====
   if (btnToolText) {
     btnToolText.addEventListener('click', () => setToolActive('text'));
   }
+
+  // ===== Schedule Bar Tool =====
+  const btnToolScheduleBar = document.getElementById('btn-tool-scheduleBar');
+  if (btnToolScheduleBar) {
+    btnToolScheduleBar.addEventListener('click', () => setToolActive('scheduleBar'));
+  }
+
+  // Schedule Bar property change listeners
+  function setupScheduleBarPropListeners() {
+    const propBarLabel = document.getElementById('prop-bar-label');
+    const propBarColor = document.getElementById('prop-bar-color');
+    const propBarTip = document.getElementById('prop-bar-tipshape');
+    const propBarW = document.getElementById('prop-bar-width');
+    const propBarH = document.getElementById('prop-bar-height');
+
+    function getSelectedBar() {
+      if (state.selectedType !== 'scheduleBar') return null;
+      return state.scheduleBars.find(b => b.id === state.selectedId);
+    }
+
+    if (propBarLabel) propBarLabel.addEventListener('input', () => {
+      const bar = getSelectedBar();
+      if (bar) { bar.label = propBarLabel.value; render(); saveState(); }
+    });
+    if (propBarColor) propBarColor.addEventListener('input', () => {
+      const bar = getSelectedBar();
+      if (bar) { bar.color = propBarColor.value; render(); saveState(); }
+    });
+    if (propBarTip) propBarTip.addEventListener('change', () => {
+      const bar = getSelectedBar();
+      if (bar) { pushUndo(); bar.tipShape = propBarTip.value; render(); saveState(); }
+    });
+    if (propBarW) propBarW.addEventListener('change', () => {
+      const bar = getSelectedBar();
+      if (bar) { pushUndo(); bar.w = Math.max(20, parseInt(propBarW.value) || 100); render(); saveState(); }
+    });
+    if (propBarH) propBarH.addEventListener('change', () => {
+      const bar = getSelectedBar();
+      if (bar) { pushUndo(); bar.h = Math.max(10, parseInt(propBarH.value) || 30); render(); saveState(); }
+    });
+  }
+  setupScheduleBarPropListeners();
 
   // Text annotation click on canvas
   canvas.addEventListener('click', (e) => {
@@ -5099,6 +5509,7 @@
       regions: JSON.parse(JSON.stringify(state.regions)),
       connectors: JSON.parse(JSON.stringify(state.connectors)),
       textAnnotations: JSON.parse(JSON.stringify(state.textAnnotations)),
+      scheduleBars: JSON.parse(JSON.stringify(state.scheduleBars)),
       layers: JSON.parse(JSON.stringify(state.layers)),
       activeLayerId: state.activeLayerId,
       canvasOffset: { ...state.canvasOffset },
@@ -5111,13 +5522,14 @@
     state.regions = tabData.regions || [];
     state.connectors = tabData.connectors || [];
     state.textAnnotations = tabData.textAnnotations || [];
+    state.scheduleBars = tabData.scheduleBars || [];
     state.layers = tabData.layers || [{ id: 1, name: 'メイン', visible: true, locked: false }];
     state.activeLayerId = tabData.activeLayerId || (state.layers[0] ? state.layers[0].id : 1);
     state.canvasOffset = tabData.canvasOffset || { x: 0, y: 0 };
     state.zoom = tabData.zoom || 1.0;
     state.persons.forEach(p => { if (!p.roleIds) p.roleIds = []; });
     clearSelection();
-    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [] };
+    state.multiSelection = { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [] };
     updateZoomLabel();
     renderPersonList();
     renderLayerList();
