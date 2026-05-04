@@ -2683,6 +2683,19 @@
     return hslToHex(hsl.h, hsl.s, Math.max(0, hsl.l - amount));
   }
 
+  function getContrastColor(hex) {
+    if (!hex || hex.length < 4) return '#ffffff';
+    const color = hex.replace('#', '');
+    const full = color.length === 3
+      ? color.split('').map(c => c + c).join('')
+      : color;
+    const r = parseInt(full.substr(0, 2), 16);
+    const g = parseInt(full.substr(2, 2), 16);
+    const b = parseInt(full.substr(4, 2), 16);
+    // YIQ luminance formula
+    return ((r * 299 + g * 587 + b * 114) / 1000 >= 128) ? '#000000' : '#ffffff';
+  }
+
   // ===== Undo / Redo =====
   function getSnapshot() {
     return JSON.parse(JSON.stringify({
