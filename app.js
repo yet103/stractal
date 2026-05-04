@@ -9,7 +9,6 @@
     roles: [],
     connectors: [],
     textAnnotations: [],
-    scheduleBars: [],
     timelines: [],
     shapes: [],
     layers: [{ id: 1, name: 'メイン', visible: true, locked: false }],
@@ -24,7 +23,7 @@
     regionDraw: null,
     connectorDraw: null, // { fromRegionId, fromSide, currentX, currentY }
     rangeSelect: null,
-    multiSelection: { personIds: [], regionIds: [], textIds: [], connectorIds: [], scheduleBarIds: [], shapeIds: [] },
+    multiSelection: { personIds: [], regionIds: [], textIds: [], connectorIds: [], shapeIds: [] },
     shiftHeld: false,
     prevTool: null, // for shift-key temp connector mode
     addingWaypoints: false, // show "+" handles for adding waypoints
@@ -265,173 +264,6 @@
     });
   }
 
-  // ===== Schedule Bar Drawing =====
-  function drawScheduleBarShape(ctx, x, y, w, h, tipShape, color, isSelected) {
-    const tipW = Math.min(h * 0.5, w * 0.3);
-    ctx.beginPath();
-    switch (tipShape) {
-      case 'chevron': // right end pointed
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + w - tipW, y);
-        ctx.lineTo(x + w, y + h / 2);
-        ctx.lineTo(x + w - tipW, y + h);
-        ctx.lineTo(x, y + h);
-        ctx.closePath();
-        break;
-      case 'doubleChevron': // both ends pointed
-        ctx.moveTo(x + tipW, y);
-        ctx.lineTo(x + w - tipW, y);
-        ctx.lineTo(x + w, y + h / 2);
-        ctx.lineTo(x + w - tipW, y + h);
-        ctx.lineTo(x + tipW, y + h);
-        ctx.lineTo(x, y + h / 2);
-        ctx.closePath();
-        break;
-      case 'flat': // rectangle
-        ctx.rect(x, y, w, h);
-        break;
-      case 'diamond': // diamond shape
-        const cx = x + w / 2, cy = y + h / 2;
-        ctx.moveTo(cx, y);
-        ctx.lineTo(x + w, cy);
-        ctx.lineTo(cx, y + h);
-        ctx.lineTo(x, cy);
-        ctx.closePath();
-        break;
-      case 'arrow': // filled arrow tip
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + w - tipW, y);
-        ctx.lineTo(x + w - tipW, y - h * 0.15);
-        ctx.lineTo(x + w, y + h / 2);
-        ctx.lineTo(x + w - tipW, y + h + h * 0.15);
-        ctx.lineTo(x + w - tipW, y + h);
-        ctx.lineTo(x, y + h);
-        ctx.closePath();
-        break;
-      default:
-        ctx.rect(x, y, w, h);
-    }
-    ctx.fillStyle = color || '#4a8acf';
-    ctx.fill();
-    ctx.strokeStyle = isSelected ? '#ff6b35' : darkenColor(color || '#4a8acf', 0.2);
-    ctx.lineWidth = isSelected ? 2.5 : 1;
-    ctx.stroke();
-  }
-
-  function darkenColor(hex, amount) {
-    let c = hex.replace('#', '');
-    if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
-    const num = parseInt(c, 16);
-    let r = (num >> 16) & 0xFF, g = (num >> 8) & 0xFF, b = num & 0xFF;
-    r = Math.max(0, Math.round(r * (1 - amount)));
-    g = Math.max(0, Math.round(g * (1 - amount)));
-    b = Math.max(0, Math.round(b * (1 - amount)));
-    return `rgb(${r},${g},${b})`;
-  }
-
-  function drawScheduleBars() {
-    state.scheduleBars.forEach(bar => {
-      if (!isOnVisibleLayer(bar)) return;
-      const s = worldToScreen(bar.x, bar.y);
-      const e = worldToScreen(bar.x + bar.w, bar.y + bar.h);
-      const sw = e.x - s.x;
-      const sh = e.y - s.y;
-      if (sw < 1 || sh < 1) return;
-
-      const isSelected = (state.selectedType === 'scheduleBar' && state.selectedId === bar.id)
-        || (state.multiSelection.scheduleBarIds || []).includes(bar.id);
-
-      ctx.save();
-      drawScheduleBarShape(ctx, s.x, s.y, sw, sh, bar.tipShape || 'chevron', bar.color || '#4a8acf', isSelected);
-
-      // Label
-      if (bar.label) {
-        const fontSize = Math.min(sh * 0.6, 14 * state.zoom);
-        ctx.font = `bold ${fontSize}px "Segoe UI", "Meiryo", sans-serif`;
-        ctx.fillStyle = getContrastColor(bar.color || '#4a8acf');
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const cx = s.x + sw / 2;
-        const cy = s.y + sh / 2;
-        const maxTextW = sw * 0.85;
-        const text = bar.label;
-        const measured = ctx.measureText(text).width;
-        if (measured > maxTextW && text.length > 3) {
-          // Truncate
-          let truncated = text;
-          while (ctx.measureText(truncated + '…').width > maxTextW && truncated.length > 1) {
-            truncated = truncated.slice(0, -1);
-          }
-          ctx.fillText(truncated + '…', cx, cy);
-        } else {
-          ctx.fillText(text, cx, cy);
-        }
-      }
-      ctx.restore();
-
-      // Resize handles when selected
-      if (isSelected) {
-        const handleSize = 6;
-        ctx.fillStyle = '#ff6b35';
-        // Left handle
-        ctx.fillRect(s.x - handleSize/2, s.y + sh/2 - handleSize/2, handleSize, handleSize);
-        // Right handle
-        ctx.fillRect(e.x - handleSize/2, s.y + sh/2 - handleSize/2, handleSize, handleSize);
-        // Top-left
-        ctx.fillRect(s.x - handleSize/2, s.y - handleSize/2, handleSize, handleSize);
-        // Bottom-right
-        ctx.fillRect(e.x - handleSize/2, e.y - handleSize/2, handleSize, handleSize);
-      }
-    });
-  }
-
-  function drawScheduleBarPreview() {
-    if (state.tool !== 'scheduleBar' || !state.scheduleBarDraw) return;
-    const d = state.scheduleBarDraw;
-    const s = worldToScreen(d.x, d.y);
-    const e = worldToScreen(d.x + d.w, d.y + d.h);
-    ctx.save();
-    ctx.globalAlpha = 0.6;
-    drawScheduleBarShape(ctx, s.x, s.y, e.x - s.x, e.y - s.y, 'chevron', '#4a8acf', false);
-    ctx.restore();
-  }
-
-  function getContrastColor(hex) {
-    let c = hex.replace('#', '');
-    if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
-    const num = parseInt(c, 16);
-    const r = (num >> 16) & 0xFF, g = (num >> 8) & 0xFF, b = num & 0xFF;
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance > 0.5 ? '#2c3e50' : '#ffffff';
-  }
-
-  function hitTestScheduleBar(sx, sy) {
-    const w = screenToWorld(sx, sy);
-    for (let i = state.scheduleBars.length - 1; i >= 0; i--) {
-      const bar = state.scheduleBars[i];
-      if (w.x >= bar.x && w.x <= bar.x + bar.w && w.y >= bar.y && w.y <= bar.y + bar.h) {
-        return bar;
-      }
-    }
-    return null;
-  }
-
-  function hitTestScheduleBarResize(sx, sy) {
-    if (state.selectedType !== 'scheduleBar') return null;
-    const bar = state.scheduleBars.find(b => b.id === state.selectedId);
-    if (!bar) return null;
-    const s = worldToScreen(bar.x, bar.y);
-    const e = worldToScreen(bar.x + bar.w, bar.y + bar.h);
-    const handleSize = 8;
-    // Right edge
-    if (Math.abs(sx - e.x) < handleSize && sy > s.y - handleSize && sy < e.y + handleSize) return 'right';
-    // Left edge
-    if (Math.abs(sx - s.x) < handleSize && sy > s.y - handleSize && sy < e.y + handleSize) return 'left';
-    // Bottom-right corner
-    if (Math.abs(sx - e.x) < handleSize && Math.abs(sy - e.y) < handleSize) return 'bottom-right';
-    return null;
-  }
-
   // ===== Shape Drawing Engine =====
   const SHAPE_TYPES = [
     { type: 'rect',          label: '矩形',       icon: '■' },
@@ -442,9 +274,10 @@
     { type: 'hexagon',       label: '六角形',     icon: '⬡' },
     { type: 'pentagon',      label: '五角形',     icon: '⬠' },
     { type: 'star',          label: '星',         icon: '★' },
-    { type: 'arrow',         label: '矢印(右)',   icon: '➡' },
+    { type: 'arrow',         label: '矢印',       icon: '➡' },
     { type: 'chevronRight',  label: 'シェブロン→', icon: '▷' },
     { type: 'chevronLeft',   label: 'シェブロン←', icon: '◁' },
+    { type: 'doubleChevron', label: '両シェブロン', icon: '◁▷' },
     { type: 'callout',       label: '吹き出し',   icon: '💬' },
     { type: 'cross',         label: '十字',       icon: '✚' },
     { type: 'pill',          label: 'カプセル',    icon: '⊂⊃' },
@@ -520,8 +353,8 @@
         break;
       }
       case 'arrow': {
-        const tipW = Math.min(hh, hw * 0.4);
-        const bodyH = hh * 0.5;
+        const tipW = Math.min(hh, hw * 0.6);
+        const bodyH = hh * 0.4;
         ctx.moveTo(-hw, -bodyH);
         ctx.lineTo(hw - tipW, -bodyH);
         ctx.lineTo(hw - tipW, -hh);
@@ -533,7 +366,7 @@
         break;
       }
       case 'chevronRight': {
-        const tipW = Math.min(hh, hw * 0.35);
+        const tipW = Math.min(h * 0.5, w * 0.3);
         ctx.moveTo(-hw, -hh);
         ctx.lineTo(hw - tipW, -hh);
         ctx.lineTo(hw, 0);
@@ -543,10 +376,21 @@
         break;
       }
       case 'chevronLeft': {
-        const tipW = Math.min(hh, hw * 0.35);
+        const tipW = Math.min(h * 0.5, w * 0.3);
         ctx.moveTo(-hw + tipW, -hh);
         ctx.lineTo(hw, -hh);
         ctx.lineTo(hw, hh);
+        ctx.lineTo(-hw + tipW, hh);
+        ctx.lineTo(-hw, 0);
+        ctx.closePath();
+        break;
+      }
+      case 'doubleChevron': {
+        const tipW = Math.min(h * 0.5, w * 0.3);
+        ctx.moveTo(-hw + tipW, -hh);
+        ctx.lineTo(hw - tipW, -hh);
+        ctx.lineTo(hw, 0);
+        ctx.lineTo(hw - tipW, hh);
         ctx.lineTo(-hw + tipW, hh);
         ctx.lineTo(-hw, 0);
         ctx.closePath();
@@ -643,10 +487,25 @@
       if (shape.label) {
         const fs = (shape.fontSize || 12) * state.zoom;
         ctx.font = `${Math.max(8, fs)}px "Segoe UI", "Meiryo", sans-serif`;
-        ctx.fillStyle = shape.fontColor || '#ffffff';
+        
+        if (shape.fontColor === '#ffffff' || !shape.fontColor) {
+           ctx.fillStyle = getContrastColor(shape.color || '#4a90d9');
+        } else {
+           ctx.fillStyle = shape.fontColor;
+        }
+        
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(shape.label, 0, 0);
+        
+        let text = shape.label;
+        const maxW = sw - 10 * state.zoom;
+        if (ctx.measureText(text).width > maxW) {
+          while (text.length > 0 && ctx.measureText(text + '...').width > maxW) {
+            text = text.substring(0, text.length - 1);
+          }
+          if (text.length > 0) text += '...';
+        }
+        ctx.fillText(text, 0, 0);
       }
 
       ctx.restore();
@@ -3056,6 +2915,22 @@
     state.scheduleBars = snap.scheduleBars || [];
     state.timelines = snap.timelines || [];
     state.shapes = snap.shapes || [];
+      // Migrate scheduleBars to shapes
+      if (snap.scheduleBars && snap.scheduleBars.length > 0) {
+        snap.scheduleBars.forEach(sb => {
+          let stype = 'chevronRight';
+          if (sb.tipShape === 'doubleChevron') stype = 'doubleChevron';
+          if (sb.tipShape === 'flat') stype = 'rect';
+          if (sb.tipShape === 'arrow') stype = 'arrow';
+          if (sb.tipShape === 'diamond') stype = 'diamond';
+          state.shapes.push({
+            id: sb.id, type: stype,
+            x: sb.x, y: sb.y, w: sb.w, h: sb.h,
+            color: sb.color, label: sb.label, fontColor: '#ffffff',
+            layerId: sb.layerId || 'default'
+          });
+        });
+      }
     state.nextId = snap.nextId;
     state.persons.forEach(migrateResource);
     clearSelection();
@@ -5055,8 +4930,6 @@
     btnToolRegion.classList.toggle('active', tool === 'region');
     if (btnToolConnector) btnToolConnector.classList.toggle('active', tool === 'connector');
     if (btnToolText) btnToolText.classList.toggle('active', tool === 'text');
-    const btnSB = document.getElementById('btn-tool-scheduleBar');
-    if (btnSB) btnSB.classList.toggle('active', tool === 'scheduleBar');
     const btnShape = document.getElementById('btn-tool-shape');
     if (btnShape) btnShape.classList.toggle('active', tool === 'shape');
     container.style.cursor = tool === 'select' ? 'default' : 'crosshair';
@@ -5910,6 +5783,18 @@
         state.scheduleBars = data.scheduleBars || [];
         state.timelines = data.timelines || [];
         state.shapes = data.shapes || [];
+        if (data.scheduleBars && data.scheduleBars.length > 0) {
+          data.scheduleBars.forEach(sb => {
+            let stype = 'chevronRight';
+            if (sb.tipShape === 'doubleChevron') stype = 'doubleChevron';
+            if (sb.tipShape === 'flat') stype = 'rect';
+            if (sb.tipShape === 'arrow') stype = 'arrow';
+            if (sb.tipShape === 'diamond') stype = 'diamond';
+            state.shapes.push({
+              id: sb.id, type: stype, x: sb.x, y: sb.y, w: sb.w, h: sb.h, color: sb.color, label: sb.label, fontColor: '#ffffff', layerId: sb.layerId || 'default'
+            });
+          });
+        }
         state.nextId = data.nextId || 1;
         if (data.layers && data.layers.length > 0) {
           state.layers = data.layers;
@@ -6019,47 +5904,14 @@
     btnToolText.addEventListener('click', () => setToolActive('text'));
   }
 
-  // ===== Schedule Bar Tool =====
-  const btnToolScheduleBar = document.getElementById('btn-tool-scheduleBar');
-  if (btnToolScheduleBar) {
-    btnToolScheduleBar.addEventListener('click', () => setToolActive('scheduleBar'));
-  }
-
-  // Schedule Bar property change listeners
-  function setupScheduleBarPropListeners() {
-    const propBarLabel = document.getElementById('prop-bar-label');
-    const propBarColor = document.getElementById('prop-bar-color');
-    const propBarTip = document.getElementById('prop-bar-tipshape');
-    const propBarW = document.getElementById('prop-bar-width');
-    const propBarH = document.getElementById('prop-bar-height');
-
-    function getSelectedBar() {
-      if (state.selectedType !== 'scheduleBar') return null;
-      return state.scheduleBars.find(b => b.id === state.selectedId);
-    }
-
-    if (propBarLabel) propBarLabel.addEventListener('input', () => {
-      const bar = getSelectedBar();
-      if (bar) { bar.label = propBarLabel.value; render(); saveState(); }
-    });
-    if (propBarColor) propBarColor.addEventListener('input', () => {
-      const bar = getSelectedBar();
-      if (bar) { bar.color = propBarColor.value; render(); saveState(); }
-    });
-    if (propBarTip) propBarTip.addEventListener('change', () => {
-      const bar = getSelectedBar();
-      if (bar) { pushUndo(); bar.tipShape = propBarTip.value; render(); saveState(); }
-    });
-    if (propBarW) propBarW.addEventListener('change', () => {
-      const bar = getSelectedBar();
-      if (bar) { pushUndo(); bar.w = Math.max(20, parseInt(propBarW.value) || 100); render(); saveState(); }
-    });
-    if (propBarH) propBarH.addEventListener('change', () => {
-      const bar = getSelectedBar();
-      if (bar) { pushUndo(); bar.h = Math.max(10, parseInt(propBarH.value) || 30); render(); saveState(); }
+  // ===== Timeline Creation =====
+  const btnTimelineTb = document.getElementById('btn-timeline-toggle-tb');
+  if (btnTimelineTb) {
+    btnTimelineTb.addEventListener('click', () => {
+      const timelineModal = document.getElementById('timeline-modal');
+      if (timelineModal) timelineModal.classList.add('show');
     });
   }
-  setupScheduleBarPropListeners();
 
   // ===== Timeline Creation =====
   const menuCreateTimeline = document.getElementById('menu-create-timeline');
@@ -6931,6 +6783,18 @@ ${els.join('\n')}
     state.scheduleBars = tabData.scheduleBars || [];
     state.timelines = tabData.timelines || [];
     state.shapes = tabData.shapes || [];
+    if (tabData.scheduleBars && tabData.scheduleBars.length > 0) {
+      tabData.scheduleBars.forEach(sb => {
+        let stype = 'chevronRight';
+        if (sb.tipShape === 'doubleChevron') stype = 'doubleChevron';
+        if (sb.tipShape === 'flat') stype = 'rect';
+        if (sb.tipShape === 'arrow') stype = 'arrow';
+        if (sb.tipShape === 'diamond') stype = 'diamond';
+        state.shapes.push({
+          id: sb.id, type: stype, x: sb.x, y: sb.y, w: sb.w, h: sb.h, color: sb.color, label: sb.label, fontColor: '#ffffff', layerId: sb.layerId || 'default'
+        });
+      });
+    }
     state.layers = tabData.layers || [{ id: 1, name: 'メイン', visible: true, locked: false }];
     state.activeLayerId = tabData.activeLayerId || (state.layers[0] ? state.layers[0].id : 1);
     state.canvasOffset = tabData.canvasOffset || { x: 0, y: 0 };

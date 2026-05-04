@@ -120,7 +120,6 @@
           <button class="btn" id="btn-tool-region" title="領域を描画">⬜ 領域</button>
           <button class="btn" id="btn-tool-connector" title="接続線 (Shift)">✏️ 接続線</button>
           <button class="btn" id="btn-tool-text" title="テキスト注釈">📝 注釈</button>
-          <button class="btn" id="btn-tool-scheduleBar" title="スケジュールバー">📅 スケジュール</button>
           <div style="position:relative;display:inline-block;">
             <button class="btn" id="btn-tool-shape" title="図形描画">🔶 図形</button>
             <div id="shape-palette" class="shape-palette" style="display:none;"></div>
@@ -131,6 +130,9 @@
           <button class="btn" id="btn-role-manage" title="役割管理">🏷 役割管理</button>
           <button class="btn" id="btn-plan-table" title="リソース計画テーブル">📊 計画表</button>
           <button class="btn" id="btn-dashboard" title="ダッシュボード">📈 ダッシュボード</button>
+        </div>
+        <div class="toolbar-group" id="tg-panels">
+          <button class="btn" id="btn-timeline-toggle-tb" title="タイムラインを追加/削除">📅 タイムライン</button>
           <div style="width: 1px; height: 24px; background: #cbd5e1; margin: 0 4px; display: inline-block; vertical-align: middle;"></div>
           <button class="btn" id="btn-toggle-sidebar-tb" title="リソース一覧パネルを開閉">🗂 リソース</button>
           <button class="btn" id="btn-toggle-property-tb" title="プロパティパネルを開閉">⚙️ プロパティ</button>
@@ -368,35 +370,7 @@
             <input type="color" class="prop-color-input" id="prop-text-color" value="#2c3e50">
           </div>
         </div>
-        <div id="scheduleBar-props" style="display:none;">
-          <div class="prop-group">
-            <div class="prop-label">ラベル</div>
-            <input type="text" class="prop-input" id="prop-bar-label" placeholder="バーラベル">
-          </div>
-          <div class="prop-group">
-            <div class="prop-label">先端形状</div>
-            <select class="prop-input" id="prop-bar-tipshape">
-              <option value="chevron">▷ シェブロン</option>
-              <option value="doubleChevron">◁▷ ダブルシェブロン</option>
-              <option value="flat">□ フラット</option>
-              <option value="diamond">◇ ダイヤ</option>
-              <option value="arrow">▶ 矢印</option>
-            </select>
-          </div>
-          <div class="prop-group">
-            <div class="prop-label">色</div>
-            <input type="color" class="prop-color-input" id="prop-bar-color" value="#4a8acf">
-          </div>
-          <hr class="prop-separator">
-          <div class="prop-group">
-            <div class="prop-label">幅</div>
-            <input type="number" class="prop-input" id="prop-bar-width" value="100" min="20">
-          </div>
-          <div class="prop-group">
-            <div class="prop-label">高さ</div>
-            <input type="number" class="prop-input" id="prop-bar-height" value="30" min="10">
-          </div>
-        </div>
+
         <div id="timeline-props" style="display:none;">
           <div class="prop-group">
             <div class="prop-label">開始年</div>
@@ -628,7 +602,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 
 </html>
