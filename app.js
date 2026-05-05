@@ -674,6 +674,11 @@
     ctx.restore();
   }
 
+  // Timeline draw preview (placeholder for potential future timeline drawing tool)
+  function drawTimelinePreview() {
+    // No-op: timeline drawing preview is not implemented yet
+  }
+
   // ===== Timeline Grid Drawing =====
   const MONTH_NAMES_JA = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
   const QUARTER_COLORS = ['#e3f2fd','#e8f5e9','#fff3e0','#fce4ec']; // Q1-Q4 background
@@ -3517,22 +3522,31 @@
     if (e.button !== 0) return;
 
     if (state.tool === 'select') {
-      // Check resize handles first
-      const handle = hitTestResizeHandle(pos.x, pos.y);
-      if (handle) {
-        pushUndo();
-        state.dragging = {
-          type: 'resize',
-          id: handle.region.id,
-          dir: handle.dir,
-          origX: handle.region.x,
-          origY: handle.region.y,
-          origW: handle.region.w,
-          origH: handle.region.h,
-          startPos: screenToWorld(pos.x, pos.y),
-        };
-        container.style.cursor = resizeCursors[handle.dir] || 'default';
-        return;
+      // Guard: skip resize hit-testing immediately after creating a shape/region
+      // to prevent the mouseup position from triggering resize on the next click
+      const justCreated = state._justCreatedShape && (Date.now() - state._justCreatedShape < 300);
+      if (justCreated) {
+        state._justCreatedShape = null;
+      }
+
+      // Check resize handles first (but not right after creating a shape)
+      if (!justCreated) {
+        const handle = hitTestResizeHandle(pos.x, pos.y);
+        if (handle) {
+          pushUndo();
+          state.dragging = {
+            type: 'resize',
+            id: handle.region.id,
+            dir: handle.dir,
+            origX: handle.region.x,
+            origY: handle.region.y,
+            origW: handle.region.w,
+            origH: handle.region.h,
+            startPos: screenToWorld(pos.x, pos.y),
+          };
+          container.style.cursor = resizeCursors[handle.dir] || 'default';
+          return;
+        }
       }
 
       // Check if clicking on any multi-selected item (person or region)
@@ -3773,39 +3787,43 @@
       }
 
 
-      // Check for shape rotation handle
-      const shapeRot = hitTestShapeRotation(pos.x, pos.y);
-      if (shapeRot) {
-        pushUndo();
-        const cx = shapeRot.x + shapeRot.w / 2;
-        const cy = shapeRot.y + shapeRot.h / 2;
-        state.dragging = {
-          type: 'shape-rotate',
-          id: shapeRot.id,
-          centerWorld: { x: cx, y: cy },
-          startAngle: shapeRot.rotation || 0,
-        };
-        container.style.cursor = 'grabbing';
-        return;
+      // Check for shape rotation handle (but not right after creating a shape)
+      if (!justCreated) {
+        const shapeRot = hitTestShapeRotation(pos.x, pos.y);
+        if (shapeRot) {
+          pushUndo();
+          const cx = shapeRot.x + shapeRot.w / 2;
+          const cy = shapeRot.y + shapeRot.h / 2;
+          state.dragging = {
+            type: 'shape-rotate',
+            id: shapeRot.id,
+            centerWorld: { x: cx, y: cy },
+            startAngle: shapeRot.rotation || 0,
+          };
+          container.style.cursor = 'grabbing';
+          return;
+        }
       }
 
-      // Check for shape resize handle
-      const shapeRes = hitTestShapeResize(pos.x, pos.y);
-      if (shapeRes) {
-        pushUndo();
-        state.dragging = {
-          type: 'shape-resize',
-          id: shapeRes.shape.id,
-          dir: shapeRes.dir,
-          startWorld: screenToWorld(pos.x, pos.y),
-          origX: shapeRes.shape.x,
-          origY: shapeRes.shape.y,
-          origW: shapeRes.shape.w,
-          origH: shapeRes.shape.h,
-          origRot: shapeRes.shape.rotation || 0,
-        };
-        container.style.cursor = 'nwse-resize';
-        return;
+      // Check for shape resize handle (but not right after creating a shape)
+      if (!justCreated) {
+        const shapeRes = hitTestShapeResize(pos.x, pos.y);
+        if (shapeRes) {
+          pushUndo();
+          state.dragging = {
+            type: 'shape-resize',
+            id: shapeRes.shape.id,
+            dir: shapeRes.dir,
+            startWorld: screenToWorld(pos.x, pos.y),
+            origX: shapeRes.shape.x,
+            origY: shapeRes.shape.y,
+            origW: shapeRes.shape.w,
+            origH: shapeRes.shape.h,
+            origRot: shapeRes.shape.rotation || 0,
+          };
+          container.style.cursor = 'nwse-resize';
+          return;
+        }
       }
 
       // Check for shape click (select / move)
@@ -3931,7 +3949,8 @@
     }
   });
 
-  canvas.addEventListener('mousemove', (e) => {
+  // Use window mousemove to track drag even when cursor leaves canvas
+  window.addEventListener('mousemove', (e) => {
     const pos = getCanvasPos(e);
 
     if (state.rangeSelect) {
@@ -4231,7 +4250,8 @@
     }
   });
 
-  canvas.addEventListener('mouseup', (e) => {
+  // Use window mouseup to catch mouse release even when cursor leaves canvas
+  window.addEventListener('mouseup', (e) => {
     // Range select complete
     if (state.rangeSelect) {
       const rs = state.rangeSelect;
@@ -4371,6 +4391,7 @@
         state.regions.push(region);
         selectItem('region', region.id);
         saveState();
+        state._justCreatedShape = Date.now();
         setToolActive('select');
       }
 
@@ -4389,6 +4410,7 @@
           type: state.activeShapeType,
           x, y, w, h,
         });
+        state._justCreatedShape = Date.now();
         setToolActive('select');
       }
       state.shapeDraw = null;

@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Canvas-HTML5-E34F26?style=flat-square&logo=html5" alt="HTML5 Canvas">
   <img src="https://img.shields.io/badge/Server-不要-success?style=flat-square" alt="No Server">
   <img src="https://img.shields.io/badge/Theme-Light%20%2F%20Dark-8B5CF6?style=flat-square" alt="Dark Mode">
-  <img src="https://img.shields.io/badge/Version-v2.1.0-orange?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-v2.1.1-orange?style=flat-square" alt="Version">
 </p>
 
 ---
@@ -218,13 +218,17 @@ stractal/
 
 | バージョン | リンク | 日付 |
 |:--|:--|:--|
-| **v2.1.0**（最新） | [📥 ZIPダウンロード](https://github.com/yet103/stractal/archive/refs/tags/v2.1.0.zip) | 2026-05-04 |
-| **v2.0.0** | [ZIPダウンロード](https://github.com/yet103/stractal/archive/refs/tags/v2.0.0.zip) | 2026-04-18 |
+| **v2.1.1**（最新） | [📥 ZIPダウンロード](https://github.com/yet103/stractal/archive/refs/tags/v2.1.1.zip) | 2026-05-05 |
+| **v2.1.0** | [ZIPダウンロード](https://github.com/yet103/stractal/archive/refs/tags/v2.1.0.zip) | 2026-05-04 |
 | 最新開発版 | [ZIPダウンロード（main）](https://github.com/yet103/stractal/archive/refs/heads/main.zip) | — |
 
 ---
 
 ## 📋 更新履歴
+
+### v2.1.1（2026-05-05）— マウス操作バグ修正
+- 🐛 **バグ修正** — 領域・図形・注釈の描画後にツールが「選択」に戻らない問題を修正
+- 🖱️ **操作性改善** — ドラッグ中にキャンバス外にマウスが出ても正しく選択範囲や図形描画が完了するように改善
 
 ### v2.1.0（2026-05-04）— SVGエクスポート・汎用図形・タイムライン
 - 🖼 **SVGエクスポート** — キャンバス全体をベクター画像（SVG）として高画質出力
